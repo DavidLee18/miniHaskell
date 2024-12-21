@@ -17,13 +17,13 @@ enum Expr<A> {
 }
 
 type Name = String;
-type Alter<A> = (i64, Vec<A>, Box<Expr<A>>);
+type Alter<A> = (i64, Vec<A>, Expr<A>);
 type CoreAlt = Alter<Name>;
 
 type Program<A> = Vec<ScDefn<A>>;
 type CoreProgram = Program<Name>;
 
-type ScDefn<A> = (Name, Vec<A>, Box<Expr<A>>);
+type ScDefn<A> = (Name, Vec<A>, Expr<A>);
 type CoreScDefn = ScDefn<Name>;
 
 /// a simple program in core lang.
@@ -35,26 +35,26 @@ const SIMPLE_PROGRAM: CoreProgram = vec![
     (
         Name::from("main"),
         vec![],
-        Box::new(Expr::Ap(
+        Expr::Ap(
             Box::new(Expr::Var(Name::from("double"))),
             Box::new(Expr::Num(21)),
-        )),
+        ),
     ),
     (
         Name::from("double"),
         vec![Name::from("x")],
-        Box::new(Expr::Ap(
+        Expr::Ap(
             Box::new(Expr::Ap(
                 Box::new(Expr::Var(Name::from("+"))),
                 Box::new(Expr::Var(Name::from("x"))),
             )),
             Box::new(Expr::Var(Name::from("x"))),
-        )),
+        ),
     ),
 ];
 
 const PRELUDE_DEFS: CoreProgram = vec![(
     Name::from("I"),
     vec![Name::from("x")],
-    Box::new(Expr::Var(Name::from("x"))),
+    Expr::Var(Name::from("x")),
 )];
