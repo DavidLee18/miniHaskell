@@ -137,3 +137,51 @@ fn empty<A: 'static + Clone>(a: A) -> Parser<A> {
 pub(crate) fn greetings() -> Parser<Vec<(String, String)>> {
     one_or_more(greeting())
 }
+
+fn apply<A: 'static, B, F: Fn(A) -> B + 'static>(a: Parser<A>, f: F) -> Parser<B> {
+    Box::new(move |toks| {
+        let mut res = vec![];
+        for (v, toks2) in a(toks) {
+            res.push((f(v), toks2));
+        }
+        res
+    })
+}
+
+pub(crate) fn greetings_n() -> Parser<usize> {
+    apply(zero_or_more(greeting()), |v| v.len())
+}
+
+fn one_or_more_with_sep<A: Clone + 'static, B: 'static>(a: Parser<A>, b: Parser<B>) -> Parser<Vec<A>> {
+    Box::new(move |toks| {
+        let mut res_mid = a(toks);
+        let mut res_mid2;
+        let mut temp_vals: Vec<A> = vec![];
+        let mut temp_rest = None;
+        let mut first = true;
+        loop {
+            if res_mid.is_empty() {
+                if first { break; }
+                else { return vec![]; }
+            }
+            res_mid.iter().for_each(|(v, _)| temp_vals.push(v.clone()));
+            let rest: Vec<Token> = res_mid
+                .iter()
+                .flat_map(|(_, tks)| tks.clone()).collect();
+            temp_rest = Some(rest.clone());
+            res_mid2 = b(rest);
+            if res_mid2.is_empty() { break; }
+            let rest: Vec<Token> = res_mid2
+                .iter()
+                .flat_map(|(_, tks)| tks.clone()).collect();
+            temp_rest = Some(rest.clone());
+            res_mid = a(rest);
+            first = false;
+        }
+        vec![(temp_vals, temp_rest.unwrap_or(vec![]))]
+    })
+}
+
+pub(crate) fn greetings_with_comma() -> Parser<Vec<(String, String)>> {
+    one_or_more_with_sep(greeting(), lit(String::from(",")))
+}
