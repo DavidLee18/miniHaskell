@@ -114,14 +114,9 @@ fn zero_or_more<A: 'static + Clone>(p: Parser<A>) -> Parser<Vec<A>> {
 }
 
 fn one_or_more<A: Clone + 'static>(p: Parser<A>) -> Parser<Vec<A>> {
-    then(
-        |p_, mut ps| {
-            ps.insert(0, p_);
-            ps
-        },
-        p,
-        zero_or_more(p),
-    )
+    Box::new(move |toks| {
+        todo!()
+    })
 }
 
 fn empty<A: 'static + Clone>(a: A) -> Parser<A> {
