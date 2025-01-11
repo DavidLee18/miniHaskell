@@ -115,7 +115,18 @@ fn zero_or_more<A: 'static + Clone>(p: Parser<A>) -> Parser<Vec<A>> {
 
 fn one_or_more<A: Clone + 'static>(p: Parser<A>) -> Parser<Vec<A>> {
     Box::new(move |toks| {
-        todo!()
+        let mut res_mid = p(toks);
+        let mut temp_vals: Vec<A> = vec![];
+        let mut temp_rest = None;
+        while !res_mid.is_empty() {
+            res_mid.iter().for_each(|(v, _)| temp_vals.push(v.clone()));
+            let rest: Vec<Token> = res_mid
+                    .iter()
+                .flat_map(|(_, tks)| tks.clone()).collect();
+            temp_rest = Some(rest.clone());
+            res_mid = p(rest);
+        }
+        vec![(temp_vals, temp_rest.unwrap_or(vec![]))]
     })
 }
 
@@ -123,6 +134,6 @@ fn empty<A: 'static + Clone>(a: A) -> Parser<A> {
     Box::new(move |toks| vec![(a.clone(), toks)])
 }
 
-fn greetings() -> Parser<Vec<(String, String)>> {
-    zero_or_more(greeting())
+pub(crate) fn greetings() -> Parser<Vec<(String, String)>> {
+    one_or_more(greeting())
 }
