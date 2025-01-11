@@ -1,4 +1,4 @@
-use tailcall::tailcall;
+pub mod parser;
 
 #[derive(Debug, Clone)]
 enum Expr<A> {
