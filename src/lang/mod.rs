@@ -1,12 +1,12 @@
 pub mod parser;
 
 #[derive(Debug, Clone)]
-enum Expr<A> {
+pub(crate) enum Expr<A> {
     Var(Name),
     Num(i64),
     Constr {
-        tag: i64,
-        arity: i64,
+        tag: u32,
+        arity: u32,
     },
     Ap(Box<Expr<A>>, Box<Expr<A>>),
     Let {
@@ -20,7 +20,7 @@ enum Expr<A> {
 
 type Name = String;
 type CoreExpr = Expr<Name>;
-type Alter<A> = (i64, Vec<A>, Expr<A>);
+type Alter<A> = (u32, Vec<A>, Expr<A>);
 type CoreAlt = Alter<Name>;
 
 type Program<A> = Vec<ScDefn<A>>;
@@ -114,23 +114,9 @@ fn prelude_defs() -> CoreProgram {
     ]
 }
 
-impl std::fmt::Display for CoreExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CoreExpr::Var(v) => write!(f, "{}", v),
-            CoreExpr::Num(n) => write!(f, "{}", n),
-            CoreExpr::Constr { .. } => todo!(),
-            CoreExpr::Ap(e1, e2) => write!(f, "{} {}", e1, e2),
-            CoreExpr::Let { .. } => todo!(),
-            CoreExpr::Case(_, _) => todo!(),
-            CoreExpr::Lam(_, _) => todo!(),
-        }
-    }
-}
-
 type Token = (u32, String);
 
-fn clex(input: String) -> Vec<Token> {
+pub(crate) fn clex(input: String) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
     let mut chars = input.chars();
     let mut c = chars.next();
@@ -144,22 +130,32 @@ fn clex(input: String) -> Vec<Token> {
                     Some('|') => {
                         while chars.next() != Some('\n') {}
                         line += 1;
-                    },
+                    }
                     _ => tokens.push((line, String::from('|'))),
                 }
             }
             c__ if TWO_CHAR_OPS.iter().find(|&&s| s.starts_with(c__)).is_some() => {
-                match TWO_CHAR_OPS.iter().find(|&&s| s.starts_with(c__)) {
-                    Some(&"==") => tokens.push((line, String::from("=="))),
-                    Some(&"~=") => tokens.push((line, String::from("~="))),
-                    Some(&">=") => tokens.push((line, String::from(">="))),
-                    Some(&"<=") => tokens.push((line, String::from("<="))),
-                    Some(&"->") => tokens.push((line, String::from("->"))),
-                    _ => unreachable!(),
+                let c_next = chars.next();
+                match (c__, c_next) {
+                    ('=', Some('=')) => tokens.push((line, String::from("=="))),
+                    ('~', Some('=')) => tokens.push((line, String::from("~="))),
+                    ('>', Some('=')) => tokens.push((line, String::from(">="))),
+                    ('<', Some('=')) => tokens.push((line, String::from("<="))),
+                    ('-', Some('>')) => tokens.push((line, String::from("->"))),
+                    _ => {
+                        tokens.push((line, String::from(c__)));
+                        temp = chars.collect::<String>();
+                        if let Some(c_next) = c_next {
+                            temp.insert(0, c_next);
+                        }
+                        chars = temp.chars();
+                    }
                 }
             }
             c__ if c__.is_whitespace() => {
-                if c__ == '\n' { line += 1; }
+                if c__ == '\n' {
+                    line += 1;
+                }
             }
             c__ if c__.is_digit(10) => {
                 let mut rest = chars
@@ -193,5 +189,19 @@ fn clex(input: String) -> Vec<Token> {
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
 
 fn syntax(tokens: Vec<Token>) -> CoreProgram {
-    todo!()
+    take_first_parse(parser::program()(tokens))
+}
+
+fn take_first_parse(programs: Vec<(CoreProgram, Vec<Token>)>) -> CoreProgram {
+    programs
+        .into_iter()
+        .find(|(_, v)| v.is_empty())
+        .map(|(p, _)| p)
+        .expect("Syntax error")
+}
+
+#[derive(Debug, Clone)]
+enum PartialExpr {
+    NoOp,
+    FoundOp(Name, CoreExpr),
 }

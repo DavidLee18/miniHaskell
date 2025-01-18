@@ -1,4 +1,4 @@
-use crate::lang::Token;
+use crate::lang::{CoreExpr, CoreProgram, CoreScDefn, Expr, PartialExpr, Token};
 use std::str::FromStr;
 
 type Parser<A> = Box<dyn Fn(Vec<Token>) -> Vec<(A, Vec<Token>)>>;
@@ -8,7 +8,11 @@ fn lit(s: String) -> Parser<String> {
 }
 
 fn var() -> Parser<String> {
-    sat(move |s| KEYWORDS.iter().all(|&k| k != s))
+    sat(move |s| {
+        KEYWORDS.iter().all(|&k| k != s)
+            && s.chars().nth(0).map_or(false, |c| c.is_alphabetic())
+            && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+    })
 }
 
 fn alt<A: 'static>(a: Parser<A>, b: Parser<A>) -> Parser<A> {
@@ -194,3 +198,132 @@ fn num() -> Parser<u32> {
         u32::from_str(&s).unwrap()
     })
 }
+
+pub(crate) fn program() -> Parser<CoreProgram> {
+    one_or_more_with_sep(sc(), lit(String::from(";")))
+}
+
+fn sc() -> Parser<CoreScDefn> {
+    let mk_sc = |n, ns, _, e| (n, ns, e);
+    then4(
+        mk_sc,
+        var(),
+        zero_or_more(var()),
+        lit(String::from("=")),
+        expr(),
+    )
+}
+
+pub(crate) fn expr() -> Parser<CoreExpr> {
+    let mk_ap_chain: fn(Vec<CoreExpr>) -> CoreExpr = |axs| {
+        assert!(axs.len() >= 1, "Syntax Error");
+        if axs.len() == 1 {
+            axs[0].clone()
+        } else {
+            axs.into_iter()
+                .rev()
+                .reduce(|e1, e2| Expr::Ap(Box::new(e2.clone()), Box::new(e1.clone())))
+                .expect("Syntax Error")
+        }
+    };
+    apply(one_or_more(aexpr()), mk_ap_chain)
+}
+
+fn aexpr() -> Parser<CoreExpr> {
+    alt(
+        apply(var(), Expr::Var),
+        alt(
+            apply(num(), |n| Expr::Num(n as i64)),
+            alt(
+                then(|_, n| Expr::Num(-(n as i64)), lit(String::from("-")), num()),
+                alt(
+                    then6(
+                        |_, _, n1, _, n2, _| Expr::Constr { tag: n1, arity: n2 },
+                        lit(String::from("Pack")),
+                        lit(String::from("{")),
+                        num(),
+                        lit(String::from(",")),
+                        num(),
+                        lit(String::from("}")),
+                    ),
+                    then3(
+                        |_, e, _| e,
+                        lit(String::from("(")),
+                        expr(),
+                        lit(String::from(")")),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+
+fn then6<
+    A: Clone + 'static,
+    B: Clone + 'static,
+    C: Clone + 'static,
+    D: 'static + Clone,
+    E: Clone + 'static,
+    F_: 'static,
+    G,
+    F: Fn(A, B, C, D, E, F_) -> G + 'static,
+>(
+    comb: F,
+    a: Parser<A>,
+    b: Parser<B>,
+    c: Parser<C>,
+    d: Parser<D>,
+    e: Parser<E>,
+    f: Parser<F_>,
+) -> Parser<G> {
+    Box::new(move |toks| {
+        let mut res = vec![];
+        for (v1, toks1) in a(toks) {
+            for (v2, toks2) in b(toks1) {
+                for (v3, toks3) in c(toks2) {
+                    for (v4, toks4) in d(toks3) {
+                        for (v5, toks5) in e(toks4) {
+                            for (v6, tok6) in f(toks5) {
+                                res.push((
+                                    comb(
+                                        v1.clone(),
+                                        v2.clone(),
+                                        v3.clone(),
+                                        v4.clone(),
+                                        v5.clone(),
+                                        v6,
+                                    ),
+                                    tok6,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        res
+    })
+}
+
+fn expr1c() -> Parser<PartialExpr> {
+    alt(
+        then(PartialExpr::FoundOp, lit(String::from("|")), expr1()),
+        empty(PartialExpr::NoOp),
+    )
+}
+
+fn expr1() -> Parser<CoreExpr> {
+    let assemble_op = |e, pe| match pe {
+        PartialExpr::NoOp => e,
+        PartialExpr::FoundOp(op, e2) => Expr::Ap(
+            Box::new(Expr::Ap(Box::new(Expr::Var(op)), Box::new(e))),
+            Box::new(e2),
+        ),
+    };
+    then(assemble_op, expr2(), expr1c())
+}
+
+fn expr2() -> Parser<CoreExpr> {
+    todo!()
+}
+
