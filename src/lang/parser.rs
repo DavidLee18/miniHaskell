@@ -1,4 +1,4 @@
-use crate::lang::{CoreExpr, CoreProgram, CoreScDefn, Expr, PartialExpr, Token};
+use crate::lang::{CoreAlt, CoreExpr, CoreProgram, CoreScDefn, Expr, PartialExpr, Token};
 use std::str::FromStr;
 
 type Parser<A> = Box<dyn Fn(Vec<Token>) -> Vec<(A, Vec<Token>)>>;
@@ -214,7 +214,7 @@ fn sc() -> Parser<CoreScDefn> {
     )
 }
 
-pub(crate) fn expr() -> Parser<CoreExpr> {
+pub(crate) fn expr6() -> Parser<CoreExpr> {
     let mk_ap_chain: fn(Vec<CoreExpr>) -> CoreExpr = |axs| {
         assert!(axs.len() >= 1, "Syntax Error");
         if axs.len() == 1 {
@@ -305,25 +305,156 @@ fn then6<
     })
 }
 
-fn expr1c() -> Parser<PartialExpr> {
+macro_rules! partial_expr {
+    ($e: ident, $pe: ident, $p: expr, $n: ident) => {
+        fn $pe() -> Parser<PartialExpr> {
+            alt(
+                then(PartialExpr::FoundOp, $p, $e()),
+                empty(PartialExpr::NoOp),
+            )
+        }
+
+        fn $e() -> Parser<CoreExpr> {
+            let assemble_op = |e, pe| match pe {
+                PartialExpr::NoOp => e,
+                PartialExpr::FoundOp(op, e2) => Expr::Ap(
+                    Box::new(Expr::Ap(Box::new(Expr::Var(op)), Box::new(e))),
+                    Box::new(e2),
+                ),
+            };
+            then(assemble_op, $n(), $pe())
+        }
+    };
+}
+
+partial_expr!(expr1, expr1c, lit(String::from("|")), expr2);
+partial_expr!(expr2, expr2c, lit(String::from("&")), expr3);
+
+fn expr4c() -> Parser<PartialExpr> {
     alt(
-        then(PartialExpr::FoundOp, lit(String::from("|")), expr1()),
+        then(PartialExpr::FoundOp, relop(), expr4()),
         empty(PartialExpr::NoOp),
     )
 }
 
-fn expr1() -> Parser<CoreExpr> {
-    let assemble_op = |e, pe| match pe {
+fn relop() -> Parser<String> {
+    alt(
+        lit(String::from("<")),
+        alt(
+            lit(String::from("<=")),
+            alt(
+                lit(String::from("==")),
+                alt(
+                    lit(String::from("~=")),
+                    alt(lit(String::from(">=")), lit(String::from(">"))),
+                ),
+            ),
+        ),
+    )
+}
+
+fn expr3() -> Parser<CoreExpr> {
+    then(assemble_op, expr4(), expr4c())
+}
+
+fn expr45c() -> Parser<PartialExpr> {
+    alt(
+        alt(
+            then(PartialExpr::FoundOp, lit(String::from("+")), expr4()),
+            then(PartialExpr::FoundOp, lit(String::from("-")), expr5()),
+        ),
+        empty(PartialExpr::NoOp),
+    )
+}
+
+fn assemble_op(e: CoreExpr, pe: PartialExpr) -> CoreExpr {
+    match pe {
         PartialExpr::NoOp => e,
         PartialExpr::FoundOp(op, e2) => Expr::Ap(
             Box::new(Expr::Ap(Box::new(Expr::Var(op)), Box::new(e))),
             Box::new(e2),
         ),
-    };
-    then(assemble_op, expr2(), expr1c())
+    }
 }
 
-fn expr2() -> Parser<CoreExpr> {
-    todo!()
+fn expr4() -> Parser<CoreExpr> {
+    then(assemble_op, expr5(), expr45c())
 }
 
+fn expr56c() -> Parser<PartialExpr> {
+    alt(
+        alt(
+            then(PartialExpr::FoundOp, lit(String::from("*")), expr5()),
+            then(PartialExpr::FoundOp, lit(String::from("/")), expr6()),
+        ),
+        empty(PartialExpr::NoOp),
+    )
+}
+
+fn expr5() -> Parser<CoreExpr> {
+    then(assemble_op, expr6(), expr56c())
+}
+
+fn expr() -> Parser<CoreExpr> {
+    alt(
+        then4(
+            |_, dfs, _, e| Expr::Let {
+                is_rec: false,
+                defs: dfs,
+                body: Box::new(e),
+            },
+            lit(String::from("let")),
+            one_or_more_with_sep(defn(), lit(String::from(";"))),
+            lit(String::from("in")),
+            expr1(),
+        ),
+        alt(
+            then4(
+                |_, dfs, _, e| Expr::Let {
+                    is_rec: true,
+                    defs: dfs,
+                    body: Box::new(e),
+                },
+                lit(String::from("letrec")),
+                one_or_more_with_sep(defn(), lit(String::from(";"))),
+                lit(String::from("in")),
+                expr1(),
+            ),
+            alt(
+                then4(
+                    |_, e, _, alts| Expr::Case(Box::new(e), alts),
+                    lit(String::from("case")),
+                    expr1(),
+                    lit(String::from("of")),
+                    one_or_more_with_sep(alter(), lit(String::from(";"))),
+                ),
+                alt(
+                    then4(
+                        |_, vars, _, e| Expr::Lam(vars, Box::new(e)),
+                        lit(String::from("\\")),
+                        one_or_more(var()),
+                        lit(String::from(".")),
+                        expr1(),
+                    ),
+                    expr1(),
+                ),
+            ),
+        ),
+    )
+}
+
+fn alter() -> Parser<CoreAlt> {
+    then6(
+        |_, n, _, vs, _, e| (n, vs, e),
+        lit(String::from("<")),
+        num(),
+        lit(String::from(">")),
+        zero_or_more(var()),
+        lit(String::from("->")),
+        expr(),
+    )
+}
+
+fn defn() -> Parser<(String, CoreExpr)> {
+    then3(|v, _, e| (v, e), var(), lit(String::from("=")), expr())
+}
