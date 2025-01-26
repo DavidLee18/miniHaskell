@@ -1,8 +1,8 @@
-use crate::lang::combinators::{alt, apply, one_or_more, one_or_more_with_sep, then, then3, then4, then6, zero_or_more};
+use crate::lang::combinators::*;
 use crate::lang::{CoreAlt, CoreExpr, CoreProgram, CoreScDefn, Expr, PartialExpr, Token};
 use std::str::FromStr;
 
-pub(crate) type Parser<A> = Box<dyn Fn(Vec<Token>) -> Vec<(A, Vec<Token>)>>;
+pub type Parser<A> = Box<dyn Fn(Vec<Token>) -> Vec<(A, Vec<Token>)>>;
 
 fn lit(s: String) -> Parser<String> {
     sat(move |s_| s_ == s)
@@ -17,7 +17,10 @@ fn var() -> Parser<String> {
 }
 
 fn hello_or_goodbye() -> Parser<String> {
-    alt(|| lit(String::from("hello")), || lit(String::from("goodbye")))
+    alt(
+        || lit(String::from("hello")),
+        || lit(String::from("goodbye")),
+    )
 }
 
 pub(crate) fn greeting() -> Parser<(String, String)> {
@@ -60,9 +63,10 @@ fn sat<F: Fn(String) -> bool + 'static>(f: F) -> Parser<String> {
 const KEYWORDS: [&'static str; 6] = ["let", "letrec", "case", "in", "of", "Pack"];
 
 fn num() -> Parser<u32> {
-    apply(|| sat(|s| s.chars().all(|c| c.is_digit(10))), |s| {
-        u32::from_str(&s).unwrap()
-    })
+    apply(
+        || sat(|s| s.chars().all(|c| c.is_digit(10))),
+        |s| u32::from_str(&s).unwrap(),
+    )
 }
 
 pub(crate) fn program() -> Parser<CoreProgram> {
@@ -98,21 +102,45 @@ pub(crate) fn expr6() -> Parser<CoreExpr> {
 fn aexpr() -> Parser<CoreExpr> {
     alt(
         || apply(var, Expr::Var),
-        || alt(
-            || apply(num, |n| Expr::Num(n as i64)),
-            || alt(
-                || then(|_, n| Expr::Num(-(n as i64)), || lit(String::from("-")), num),
-                || then6(
-                    |_, _, n1, _, n2, _| Expr::Constr { tag: n1, arity: n2 },
-                    || lit(String::from("Pack")),
-                    || lit(String::from("{")),
-                    num,
-                    || lit(String::from(",")),
-                    num,
-                    || lit(String::from("}")),
-                ),
-            ),
-        ),
+        || {
+            alt(
+                || apply(num, |n| Expr::Num(n as i64)),
+                || {
+                    alt(
+                        || {
+                            then(
+                                |_, n| Expr::Num(-(n as i64)),
+                                || lit(String::from("-")),
+                                num,
+                            )
+                        },
+                        || {
+                            alt(
+                                || {
+                                    then6(
+                                        |_, _, n1, _, n2, _| Expr::Constr { tag: n1, arity: n2 },
+                                        || lit(String::from("Pack")),
+                                        || lit(String::from("{")),
+                                        num,
+                                        || lit(String::from(",")),
+                                        num,
+                                        || lit(String::from("}")),
+                                    )
+                                },
+                                || {
+                                    then3(
+                                        |_, e, _| e,
+                                        || lit(String::from("(")),
+                                        expr,
+                                        || lit(String::from(")")),
+                                    )
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+        },
     )
 }
 
@@ -146,16 +174,22 @@ fn expr4c() -> Parser<PartialExpr> {
 fn relop() -> Parser<String> {
     alt(
         || lit(String::from("<")),
-        || alt(
-            || lit(String::from("<=")),
-            || alt(
-                || lit(String::from("==")),
-                || alt(
-                    || lit(String::from("~=")),
-                    || alt(|| lit(String::from(">=")), || lit(String::from(">"))),
-                ),
-            ),
-        ),
+        || {
+            alt(
+                || lit(String::from("<=")),
+                || {
+                    alt(
+                        || lit(String::from("==")),
+                        || {
+                            alt(
+                                || lit(String::from("~=")),
+                                || alt(|| lit(String::from(">=")), || lit(String::from(">"))),
+                            )
+                        },
+                    )
+                },
+            )
+        },
     )
 }
 
@@ -165,10 +199,12 @@ fn expr3() -> Parser<CoreExpr> {
 
 fn expr5c() -> Parser<PartialExpr> {
     alt(
-        || alt(
-            || then(PartialExpr::FoundOp, || lit(String::from("+")), expr5),
-            || then(PartialExpr::FoundOp, || lit(String::from("-")), expr5),
-        ),
+        || {
+            alt(
+                || then(PartialExpr::FoundOp, || lit(String::from("+")), expr5),
+                || then(PartialExpr::FoundOp, || lit(String::from("-")), expr5),
+            )
+        },
         || empty(PartialExpr::NoOp),
     )
 }
@@ -189,10 +225,12 @@ fn expr4() -> Parser<CoreExpr> {
 
 fn expr6c() -> Parser<PartialExpr> {
     alt(
-        || alt(
-            || then(PartialExpr::FoundOp, || lit(String::from("*")), expr6),
-            || then(PartialExpr::FoundOp, || lit(String::from("/")), expr6),
-        ),
+        || {
+            alt(
+                || then(PartialExpr::FoundOp, || lit(String::from("*")), expr6),
+                || then(PartialExpr::FoundOp, || lit(String::from("/")), expr6),
+            )
+        },
         || empty(PartialExpr::NoOp),
     )
 }
@@ -203,49 +241,63 @@ fn expr5() -> Parser<CoreExpr> {
 
 fn expr() -> Parser<CoreExpr> {
     alt(
-        || then4(
-            |_, dfs, _, e| Expr::Let {
-                is_rec: false,
-                defs: dfs,
-                body: Box::new(e),
-            },
-            || lit(String::from("let")),
-            || one_or_more_with_sep(defn, || lit(String::from(";"))),
-            || lit(String::from("in")),
-            expr1,
-        ),
-        || alt(
-            || then4(
+        || {
+            then4(
                 |_, dfs, _, e| Expr::Let {
-                    is_rec: true,
+                    is_rec: false,
                     defs: dfs,
                     body: Box::new(e),
                 },
-                || lit(String::from("letrec")),
+                || lit(String::from("let")),
                 || one_or_more_with_sep(defn, || lit(String::from(";"))),
                 || lit(String::from("in")),
                 expr1,
-            ),
-            || alt(
-                || then4(
-                    |_, e, _, alts| Expr::Case(Box::new(e), alts),
-                    || lit(String::from("case")),
-                    expr1,
-                    || lit(String::from("of")),
-                    || one_or_more_with_sep(alter, || lit(String::from(";"))),
-                ),
-                || alt(
-                    || then4(
-                        |_, vars, _, e| Expr::Lam(vars, Box::new(e)),
-                        || lit(String::from("\\")),
-                        || one_or_more(var),
-                        || lit(String::from(".")),
+            )
+        },
+        || {
+            alt(
+                || {
+                    then4(
+                        |_, dfs, _, e| Expr::Let {
+                            is_rec: true,
+                            defs: dfs,
+                            body: Box::new(e),
+                        },
+                        || lit(String::from("letrec")),
+                        || one_or_more_with_sep(defn, || lit(String::from(";"))),
+                        || lit(String::from("in")),
                         expr1,
-                    ),
-                    expr1,
-                ),
-            ),
-        ),
+                    )
+                },
+                || {
+                    alt(
+                        || {
+                            then4(
+                                |_, e, _, alts| Expr::Case(Box::new(e), alts),
+                                || lit(String::from("case")),
+                                expr1,
+                                || lit(String::from("of")),
+                                || one_or_more_with_sep(alter, || lit(String::from(";"))),
+                            )
+                        },
+                        || {
+                            alt(
+                                || {
+                                    then4(
+                                        |_, vars, _, e| Expr::Lam(vars, Box::new(e)),
+                                        || lit(String::from("\\")),
+                                        || one_or_more(var),
+                                        || lit(String::from(".")),
+                                        expr1,
+                                    )
+                                },
+                                expr1,
+                            )
+                        },
+                    )
+                },
+            )
+        },
     )
 }
 
