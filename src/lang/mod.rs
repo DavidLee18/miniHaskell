@@ -1,7 +1,8 @@
-pub mod parser;
+pub(crate) mod combinators;
+pub(crate) mod parser;
 
 #[derive(Debug, Clone)]
-pub(crate) enum Expr<A> {
+pub enum Expr<A> {
     Var(Name),
     Num(i64),
     Constr {
@@ -34,85 +35,9 @@ type CoreScDefn = ScDefn<Name>;
 /// main = double 21 ;
 /// double x = x + x
 /// ```
-fn simple_program() -> CoreProgram {
-    vec![
-        (
-            Name::from("main"),
-            vec![],
-            Expr::Ap(
-                Box::new(Expr::Var(Name::from("double"))),
-                Box::new(Expr::Num(21)),
-            ),
-        ),
-        (
-            Name::from("double"),
-            vec![Name::from("x")],
-            Expr::Ap(
-                Box::new(Expr::Ap(
-                    Box::new(Expr::Var(Name::from("+"))),
-                    Box::new(Expr::Var(Name::from("x"))),
-                )),
-                Box::new(Expr::Var(Name::from("x"))),
-            ),
-        ),
-    ]
-}
+pub const SIMPLE_PROGRAM: &'static str = "main = double 21; double x = x + x";
 
-fn prelude_defs() -> CoreProgram {
-    vec![
-        (
-            Name::from("I"),
-            vec![Name::from("x")],
-            Expr::Var(Name::from("x")),
-        ),
-        (
-            Name::from("K"),
-            vec![Name::from("x"), Name::from("y")],
-            Expr::Var(Name::from("x")),
-        ),
-        (
-            Name::from("K1"),
-            vec![Name::from("x"), Name::from("y")],
-            Expr::Var(Name::from("y")),
-        ),
-        (
-            Name::from("S"),
-            vec![Name::from("f"), Name::from("g"), Name::from("x")],
-            Expr::Ap(
-                Box::new(Expr::Ap(
-                    Box::new(Expr::Var(Name::from("f"))),
-                    Box::new(Expr::Var(Name::from("x"))),
-                )),
-                Box::new(Expr::Ap(
-                    Box::new(Expr::Var(Name::from("g"))),
-                    Box::new(Expr::Var(Name::from("x"))),
-                )),
-            ),
-        ),
-        (
-            Name::from("compose"),
-            vec![Name::from("f"), Name::from("g"), Name::from("x")],
-            Expr::Ap(
-                Box::new(Expr::Var(Name::from("f"))),
-                Box::new(Expr::Ap(
-                    Box::new(Expr::Var(Name::from("g"))),
-                    Box::new(Expr::Var(Name::from("x"))),
-                )),
-            ),
-        ),
-        (
-            Name::from("twice"),
-            vec![Name::from("f")],
-            Expr::Ap(
-                Box::new(Expr::Ap(
-                    Box::new(Expr::Var(Name::from("compose"))),
-                    Box::new(Expr::Var(Name::from("f"))),
-                )),
-                Box::new(Expr::Var(Name::from("f"))),
-            ),
-        ),
-    ]
-}
+pub const PRELUDE_DEFS: &'static str = "I x = x; K x y = x; K1 x y = y; S f g x = f x (g x); compose f g x = f (g x); twice f = compose f f";
 
 type Token = (u32, String);
 
@@ -188,7 +113,7 @@ pub(crate) fn clex(input: String) -> Vec<Token> {
 
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
 
-fn syntax(tokens: Vec<Token>) -> CoreProgram {
+pub fn syntax(tokens: Vec<Token>) -> CoreProgram {
     take_first_parse(parser::program()(tokens))
 }
 
