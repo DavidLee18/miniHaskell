@@ -1,4 +1,6 @@
-use crate::lang::combinators::*;
+use crate::lang::combinators::{
+    alt, apply, one_or_more, one_or_more_with_sep, then, then3, then4, then6, zero_or_more,
+};
 use crate::lang::{CoreAlt, CoreExpr, CoreProgram, CoreScDefn, Expr, PartialExpr, Token};
 use std::str::FromStr;
 
@@ -74,9 +76,8 @@ pub(crate) fn program() -> Parser<CoreProgram> {
 }
 
 fn sc() -> Parser<CoreScDefn> {
-    let mk_sc = |n, ns, _, e| (n, ns, e);
     then4(
-        mk_sc,
+        |n, ns, _, e| (n, ns, e),
         var,
         || zero_or_more(var),
         || lit(String::from("=")),
@@ -251,7 +252,7 @@ fn expr() -> Parser<CoreExpr> {
                 || lit(String::from("let")),
                 || one_or_more_with_sep(defn, || lit(String::from(";"))),
                 || lit(String::from("in")),
-                expr1,
+                expr,
             )
         },
         || {
@@ -266,7 +267,7 @@ fn expr() -> Parser<CoreExpr> {
                         || lit(String::from("letrec")),
                         || one_or_more_with_sep(defn, || lit(String::from(";"))),
                         || lit(String::from("in")),
-                        expr1,
+                        expr,
                     )
                 },
                 || {
@@ -275,7 +276,7 @@ fn expr() -> Parser<CoreExpr> {
                             then4(
                                 |_, e, _, alts| Expr::Case(Box::new(e), alts),
                                 || lit(String::from("case")),
-                                expr1,
+                                expr,
                                 || lit(String::from("of")),
                                 || one_or_more_with_sep(alter, || lit(String::from(";"))),
                             )
@@ -288,7 +289,7 @@ fn expr() -> Parser<CoreExpr> {
                                         || lit(String::from("\\")),
                                         || one_or_more(var),
                                         || lit(String::from(".")),
-                                        expr1,
+                                        expr,
                                     )
                                 },
                                 expr1,
@@ -309,10 +310,10 @@ fn alter() -> Parser<CoreAlt> {
         || lit(String::from(">")),
         || zero_or_more(var),
         || lit(String::from("->")),
-        expr1,
+        expr,
     )
 }
 
 fn defn() -> Parser<(String, CoreExpr)> {
-    then3(|v, _, e| (v, e), var, || lit(String::from("=")), expr1)
+    then3(|v, _, e| (v, e), var, || lit(String::from("=")), expr)
 }
