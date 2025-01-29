@@ -283,56 +283,81 @@ pub(crate) fn zero_or_more<A: Clone + 'static, F: Fn() -> Parser<A> + 'static + 
     alt(move || one_or_more(p.clone()), || empty(vec![]))
 }
 
-pub(crate) fn one_or_more<A: Clone, F: Fn() -> Parser<A> + 'static>(p: F) -> Parser<Vec<A>> {
-    Box::new(move |toks| {
-        let mut res_mid = p()(toks);
-        let mut temp_vals: Vec<A> = vec![];
-        let mut temp_rest = None;
-        while !res_mid.is_empty() {
-            res_mid.iter().for_each(|(v, _)| temp_vals.push(v.clone()));
-            let rest: Vec<Token> = res_mid.iter().flat_map(|(_, tks)| tks.clone()).collect();
-            temp_rest = Some(rest.clone());
-            res_mid = p()(rest);
-        }
-        vec![(temp_vals, temp_rest.unwrap_or(vec![]))]
-    })
+pub(crate) fn one_or_more<A: Clone + 'static, F: Fn() -> Parser<A> + 'static + Clone>(
+    p: F,
+) -> Parser<Vec<A>> {
+    then(
+        |a, mut v: Vec<A>| {
+            v.insert(0, a);
+            v
+        },
+        p.clone(),
+        move || zero_or_more(p.clone()),
+    )
 }
 
 pub(crate) fn one_or_more_with_sep<
-    A: Clone,
-    B,
-    FA: Fn() -> Parser<A> + 'static,
-    FB: Fn() -> Parser<B> + 'static,
+    A: Clone + 'static,
+    B: Clone + 'static,
+    FA: Fn() -> Parser<A> + 'static + Clone,
+    FB: Fn() -> Parser<B> + 'static + Clone,
 >(
     a: FA,
     b: FB,
 ) -> Parser<Vec<A>> {
-    Box::new(move |toks| {
-        let mut res_mid = a()(toks);
-        let mut res_mid2;
-        let mut temp_vals: Vec<A> = vec![];
-        let mut temp_rest = None;
-        let mut first = true;
-        loop {
-            if res_mid.is_empty() {
-                if first {
-                    break;
-                } else {
-                    return vec![];
-                }
+    then(
+        |x, xs: PartialExpr2<Vec<A>, B>| match xs {
+            PartialExpr2::FoundOp(_, mut as_) => {
+                as_.insert(0, x);
+                as_
             }
-            res_mid.iter().for_each(|(v, _)| temp_vals.push(v.clone()));
-            let rest: Vec<Token> = res_mid.iter().flat_map(|(_, tks)| tks.clone()).collect();
-            temp_rest = Some(rest.clone());
-            res_mid2 = b()(rest);
-            if res_mid2.is_empty() {
-                break;
+            PartialExpr2::NoOp => {
+                vec![x]
             }
-            let rest: Vec<Token> = res_mid2.iter().flat_map(|(_, tks)| tks.clone()).collect();
-            temp_rest = Some(rest.clone());
-            res_mid = a()(rest);
-            first = false;
-        }
-        vec![(temp_vals, temp_rest.unwrap_or(vec![]))]
-    })
+        },
+        a.clone(),
+        move || one_with_sep(a.clone(), b.clone()),
+    )
+}
+
+fn one_with_sep<
+    A: Clone + 'static,
+    B: Clone + 'static,
+    F: Fn() -> Parser<A> + 'static + Clone,
+    F_: Fn() -> Parser<B> + 'static + Clone,
+>(
+    a: F,
+    sep: F_,
+) -> Parser<PartialExpr2<Vec<A>, B>> {
+    alt(
+        move || {
+            let a_ = a.clone();
+            let sep_ = sep.clone();
+            then(PartialExpr2::FoundOp, sep.clone(), move || {
+                zero_or_more_with_sep(a_.clone(), sep_.clone())
+            })
+        },
+        || empty(PartialExpr2::NoOp),
+    )
+}
+
+fn zero_or_more_with_sep<
+    A: Clone + 'static,
+    B: Clone + 'static,
+    F: Fn() -> Parser<A> + Clone + 'static,
+    F_: Fn() -> Parser<B> + Clone + 'static,
+>(
+    f: F,
+    sep: F_,
+) -> Parser<Vec<A>> {
+    alt(
+        move || one_or_more_with_sep(f.clone(), sep.clone()),
+        || empty(vec![]),
+    )
+}
+
+#[derive(Clone)]
+enum PartialExpr2<A, B> {
+    FoundOp(B, A),
+    NoOp,
 }

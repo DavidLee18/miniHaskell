@@ -87,7 +87,6 @@ fn sc() -> Parser<CoreScDefn> {
 
 pub(crate) fn expr6() -> Parser<CoreExpr> {
     let mk_ap_chain: fn(Vec<CoreExpr>) -> CoreExpr = |axs| {
-        assert!(axs.len() >= 1, "Syntax Error");
         if axs.len() == 1 {
             axs[0].clone()
         } else {
@@ -240,66 +239,58 @@ fn expr5() -> Parser<CoreExpr> {
     then(assemble_op, expr6, expr6c)
 }
 
-fn expr() -> Parser<CoreExpr> {
-    alt(
-        || {
-            then4(
-                |_, dfs, _, e| Expr::Let {
-                    is_rec: false,
-                    defs: dfs,
-                    body: Box::new(e),
-                },
-                || lit(String::from("let")),
-                || one_or_more_with_sep(defn, || lit(String::from(";"))),
-                || lit(String::from("in")),
-                expr,
-            )
+fn let_in() -> Parser<CoreExpr> {
+    then4(
+        |_, dfs, _, e| Expr::Let {
+            is_rec: false,
+            defs: dfs,
+            body: Box::new(e),
         },
-        || {
-            alt(
-                || {
-                    then4(
-                        |_, dfs, _, e| Expr::Let {
-                            is_rec: true,
-                            defs: dfs,
-                            body: Box::new(e),
-                        },
-                        || lit(String::from("letrec")),
-                        || one_or_more_with_sep(defn, || lit(String::from(";"))),
-                        || lit(String::from("in")),
-                        expr,
-                    )
-                },
-                || {
-                    alt(
-                        || {
-                            then4(
-                                |_, e, _, alts| Expr::Case(Box::new(e), alts),
-                                || lit(String::from("case")),
-                                expr,
-                                || lit(String::from("of")),
-                                || one_or_more_with_sep(alter, || lit(String::from(";"))),
-                            )
-                        },
-                        || {
-                            alt(
-                                || {
-                                    then4(
-                                        |_, vars, _, e| Expr::Lam(vars, Box::new(e)),
-                                        || lit(String::from("\\")),
-                                        || one_or_more(var),
-                                        || lit(String::from(".")),
-                                        expr,
-                                    )
-                                },
-                                expr1,
-                            )
-                        },
-                    )
-                },
-            )
-        },
+        || lit(String::from("let")),
+        || one_or_more_with_sep(defn, || lit(String::from(";"))),
+        || lit(String::from("in")),
+        expr,
     )
+}
+
+fn letrec_in() -> Parser<CoreExpr> {
+    then4(
+        |_, dfs, _, e| Expr::Let {
+            is_rec: true,
+            defs: dfs,
+            body: Box::new(e),
+        },
+        || lit(String::from("letrec")),
+        || one_or_more_with_sep(defn, || lit(String::from(";"))),
+        || lit(String::from("in")),
+        expr,
+    )
+}
+
+fn case_of() -> Parser<CoreExpr> {
+    then4(
+        |_, e, _, alts| Expr::Case(Box::new(e), alts),
+        || lit(String::from("case")),
+        expr,
+        || lit(String::from("of")),
+        || one_or_more_with_sep(alter, || lit(String::from(";"))),
+    )
+}
+
+fn lambda() -> Parser<CoreExpr> {
+    then4(
+        |_, vars, _, e| Expr::Lam(vars, Box::new(e)),
+        || lit(String::from("\\")),
+        || one_or_more(var),
+        || lit(String::from(".")),
+        expr,
+    )
+}
+
+fn expr() -> Parser<CoreExpr> {
+    alt(let_in, || {
+        alt(letrec_in, || alt(case_of, || alt(lambda, expr1)))
+    })
 }
 
 fn alter() -> Parser<CoreAlt> {
