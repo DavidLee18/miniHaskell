@@ -1,7 +1,7 @@
 pub(crate) mod combinators;
 pub(crate) mod parser;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr<A> {
     Var(Name),
     Num(i64),
