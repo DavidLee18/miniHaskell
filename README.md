@@ -1,4 +1,4 @@
-# harkulles
+# miniHaskell
 a little, functional, and lazy language
 
 based on a paper: "Implementing Functional Languages: a tutorial",
