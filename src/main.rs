@@ -11,8 +11,6 @@ fn run(p: PathBuf) -> String {
 }
 
 fn main() {
-    let m = (2, 3, 0, 0);
-    println!("{:?}", m);
-    let m = lang::eval_mult(m);
-    println!("{:?}", m);
+    let program = "main = S K K 3";
+    println!("{:?}", compiler::eval(compiler::compile(lang::parse_raw(program.to_string()))));
 }

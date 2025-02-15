@@ -165,3 +165,7 @@ pub(crate) fn parse(p: PathBuf) -> CoreProgram {
     let s = read_to_string(p).expect("Failed to read file");
     syntax(clex(s))
 }
+
+pub(crate) fn parse_raw(s: String) -> CoreProgram {
+    syntax(clex(s))
+}

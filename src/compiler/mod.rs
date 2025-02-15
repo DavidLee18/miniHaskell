@@ -8,7 +8,7 @@ type TiDump = ();
 
 type TiHeap = Heap<Node>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum Node {
     Ap(Addr, Addr),
     SuperComb(lang::Name, Vec<lang::Name>, lang::CoreExpr),
@@ -26,7 +26,7 @@ pub(crate) fn compile(p: lang::CoreProgram) -> TiState {
     let sc_defs = vec![
         p,
         lang::syntax(lang::clex(String::from(lang::PRELUDE_DEFS))),
-        lang::syntax(lang::clex(String::from(EXTRA_PRELUDE_DEFS))),
+        // lang::syntax(lang::clex(String::from(EXTRA_PRELUDE_DEFS))),
     ]
         .into_iter()
         .flatten()
@@ -72,35 +72,43 @@ fn step(state: &mut TiState) {
     let (stack, _, heap, _, _) = state;
 
     match heap
-        .lookup(stack.pop().expect("Empty stack"))
+        .lookup(*stack.last().expect("Empty stack"))
         .expect("cannot be found on heap")
     {
-        Node::Ap(a1, a2) => {
-            let (a1, a2) = (*a1, *a2);
-            ap_step(state, a1, a2)
-        }
+        Node::Ap(a1, a2) => stack.push(*a1),
         Node::SuperComb(sc, args, body) => {
             let (sc, args, body) = (sc.clone(), args.clone(), body.clone());
             sc_step(state, sc, args, body)
         }
-        Node::Num(n) => {
-            let n = *n;
-            num_step(state, n)
-        }
+        Node::Num(n) => panic!("Number applied as a function")
     }
 }
 
-fn sc_step(state: &mut TiState, sc_name: lang::Name, arg_names: Vec<lang::Name>, body: lang::CoreExpr) {
-    todo!()
-}
-
-fn ap_step(state: &mut TiState, a1: Addr, a2: Addr) {
-    let (stack, _, _, _, _) = state;
-    stack.push(a1);
-}
-
-fn num_step(state: &mut TiState, n: i64) {
-    panic!("Number applied as a function")
+fn sc_step(
+    state: &mut TiState,
+    sc_name: lang::Name,
+    arg_names: Vec<lang::Name>,
+    body: lang::CoreExpr,
+) {
+    let (stack, _, heap, globals, _) = state;
+    let arg_names_len = arg_names.len();
+    let arg_bindings = arg_names
+        .into_iter()
+        .zip(heap.get_args(stack))
+        .collect::<Vec<_>>();
+    let env = arg_bindings
+        .into_iter()
+        .chain(globals.iter().cloned())
+        .collect();
+    let result_addr = heap.instantiate(body, &env);
+    let mut i = 0;
+    while let Some(_) = stack.pop() {
+        if i > arg_names_len {
+            break;
+        }
+        i += 1;
+    }
+    stack.push(result_addr);
 }
 
 fn ti_final(state: &TiState) -> bool {
@@ -123,9 +131,13 @@ fn is_data_node(node: &Node) -> bool {
 }
 
 fn do_admin(state: &mut TiState) {
-    apply_to_stats(ti_stat_inc_steps, state)
+    // apply_to_stats(ti_stat_inc_steps, state)
 }
 
-fn ti_stat_inc_steps(state: &mut TiStats) { todo!() }
+fn ti_stat_inc_steps(state: &mut TiStats) {
+    todo!()
+}
 
-pub(crate) fn show_results(states: Vec<TiState>) -> String { todo!() }
+pub(crate) fn show_results(states: Vec<TiState>) -> String {
+    format!("{:?}", states)
+}

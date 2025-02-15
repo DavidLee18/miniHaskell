@@ -1,9 +1,9 @@
-use std::collections::VecDeque;
+use crate::compiler::Node;
+use crate::lang::{CoreExpr, Name};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(crate) struct Heap<A> {
     size: usize,
-    free: VecDeque<Addr>,
     cts: Vec<(Addr, A)>,
 }
 pub(crate) type Addr = usize;
@@ -29,20 +29,25 @@ impl<A> Heap<A> {
     pub fn new() -> Self {
         Self {
             size: 0,
-            free: (1..usize::MAX).collect(),
             cts: Vec::new(),
         }
     }
 
-    pub fn alloc(&mut self, val: A) -> Option<Addr> {
-        if self.free.is_empty() {
-            None
-        } else {
-            self.size += 1;
-            let addr = self.free.pop_front().unwrap();
-            self.cts.push((addr, val));
-            Some(addr)
+    fn get_addr(&self) -> Addr {
+        let mut i = 1;
+        let mut found = self.cts.iter().find(|(a, _)| *a == i);
+        while let Some(_) = found {
+            i += 1;
+            found = self.cts.iter().find(|(a, _)| *a == i);
         }
+        i
+    }
+
+    pub fn alloc(&mut self, val: A) -> Option<Addr> {
+        let addr = self.get_addr();
+        self.size += 1;
+        self.cts.push((addr, val));
+        Some(addr)
     }
 
     pub fn update(&mut self, addr: Addr, val: A) {
@@ -58,7 +63,6 @@ impl<A> Heap<A> {
     pub fn free(&mut self, addr: Addr) {
         self.cts.retain(|(a, _)| *a != addr);
         self.size -= 1;
-        self.free.push_front(addr);
     }
 
     pub fn size(&self) -> usize {
@@ -71,5 +75,39 @@ impl<A> Heap<A> {
 
     pub fn lookup(&self, addr: Addr) -> Option<&A> {
         self.cts.iter().find(|(a, _)| *a == addr).map(|(_, v)| v)
+    }
+}
+
+impl Heap<Node> {
+    pub fn get_args(&mut self, stack: &Vec<Addr>) -> Vec<Addr> {
+        let mut res = vec![];
+        for addr in stack.iter().rev() {
+            match self.lookup(*addr) {
+                Some(Node::Ap(fun, arg)) => res.push(*arg),
+                _ => continue,
+            }
+        }
+        res
+    }
+
+    pub fn instantiate(&mut self, expr: CoreExpr, env: &ASSOC<Name, Addr>) -> Addr {
+        match expr {
+            CoreExpr::Var(v) => env
+                .iter()
+                .find(|(n, _)| *n == v)
+                .map(|(_, addr)| *addr)
+                .expect(&format!("undefined name {}", v)),
+            CoreExpr::Num(n) => self.alloc(Node::Num(n)).expect("heap alloc failed"),
+            CoreExpr::Constr { .. } => panic!("unable to instantiate constr yet"),
+            CoreExpr::Ap(e1, e2) => {
+                let a1 = self.instantiate(*e1, env);
+                let a2 = self.instantiate(*e2, env);
+                self.alloc(Node::Ap(a1, a2))
+                    .expect("heap instantiate failed")
+            }
+            CoreExpr::Let { .. } => panic!("unable to instantiate let yet"),
+            CoreExpr::Case(_, _) => panic!("unable to instantiate case"),
+            CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
+        }
     }
 }
