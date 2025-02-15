@@ -1,3 +1,6 @@
+use std::fs::read_to_string;
+use std::path::PathBuf;
+
 pub(crate) mod combinators;
 pub(crate) mod parser;
 
@@ -19,16 +22,16 @@ pub enum Expr<A> {
     Lam(Vec<A>, Box<Expr<A>>),
 }
 
-type Name = String;
-type CoreExpr = Expr<Name>;
+pub(crate) type Name = String;
+pub(crate) type CoreExpr = Expr<Name>;
 type Alter<A> = (u32, Vec<A>, Expr<A>);
 type CoreAlt = Alter<Name>;
 
 type Program<A> = Vec<ScDefn<A>>;
-type CoreProgram = Program<Name>;
+pub(crate) type CoreProgram = Program<Name>;
 
 type ScDefn<A> = (Name, Vec<A>, Expr<A>);
-type CoreScDefn = ScDefn<Name>;
+pub(crate) type CoreScDefn = ScDefn<Name>;
 
 /// a simple program in core lang.
 /// ```
@@ -129,4 +132,36 @@ fn take_first_parse(programs: Vec<(CoreProgram, Vec<Token>)>) -> CoreProgram {
 enum PartialExpr {
     NoOp,
     FoundOp(Name, CoreExpr),
+}
+
+type MultState = (u32, u32, u32, u32);
+
+pub(crate) fn eval_mult(m: MultState) -> Vec<MultState> {
+    let mut res = vec![];
+    let mut temp = m;
+    while !mult_final(temp) {
+        res.push(temp);
+        temp = step_mult(temp);
+    }
+    res.push(temp);
+    res
+}
+
+fn step_mult(m: MultState) -> MultState {
+    let (n, m, d, t) = m;
+    if d > 0 {
+        (n, m, d - 1, t + 1)
+    } else {
+        (n, m - 1, n, t)
+    }
+}
+
+fn mult_final(m: MultState) -> bool {
+    let (_, m, d, _) = m;
+    m == 0 && d == 0
+}
+
+pub(crate) fn parse(p: PathBuf) -> CoreProgram {
+    let s = read_to_string(p).expect("Failed to read file");
+    syntax(clex(s))
 }
