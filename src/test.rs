@@ -100,7 +100,7 @@ fn id_skk3() {
 #[test]
 fn twice3_id_skk3() {
     let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "id = S K K; main = id 3",
+        "id = S K K; main = twice twice twice id 3",
     ))));
     let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
     assert_eq!(res_stack, vec![compiler::Node::Num(3)])
