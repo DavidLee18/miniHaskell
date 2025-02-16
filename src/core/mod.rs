@@ -5,6 +5,7 @@ use crate::lang::{CoreExpr, Name};
 pub(crate) struct Heap<A> {
     size: usize,
     cts: Vec<(Addr, A)>,
+    alloc_count: usize,
 }
 pub(crate) type Addr = usize;
 pub(crate) type ASSOC<A, B> = Vec<(A, B)>;
@@ -30,6 +31,7 @@ impl<A> Heap<A> {
         Self {
             size: 0,
             cts: Vec::new(),
+            alloc_count: 0,
         }
     }
 
@@ -47,7 +49,12 @@ impl<A> Heap<A> {
         let addr = self.get_addr();
         self.size += 1;
         self.cts.push((addr, val));
+        self.alloc_count += 1;
         Some(addr)
+    }
+
+    pub fn alloc_count(&self) -> usize {
+        self.alloc_count
     }
 
     pub fn update(&mut self, addr: Addr, val: A) {
@@ -92,7 +99,10 @@ impl Heap<Node> {
             }
         }
         if i < len {
-            panic!("not enough args: expected {}, got {}\nargs: {:?}", len, i, res);
+            panic!(
+                "not enough args: expected {}, got {}\nargs: {:?}",
+                len, i, res
+            );
         }
         res
     }

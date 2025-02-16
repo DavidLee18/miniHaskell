@@ -37,7 +37,7 @@ fn let_case() {
                 assert_eq!(als[1], (2, vec![], Expr::Num(5)));
             }
             _ => panic!("expected let"),
-        }
+        },
         _ => panic!("expected case"),
     }
 }
@@ -45,7 +45,7 @@ fn let_case() {
 #[test]
 fn dangling_else() {
     let res = lang::syntax(lang::clex(String::from(
-        "f x y = case x of <1> -> case y of <1> -> 1; <2> -> 2"
+        "f x y = case x of <1> -> case y of <1> -> 1; <2> -> 2",
     )));
 
     assert_eq!(res[0].0, "f");
@@ -68,4 +68,40 @@ fn dangling_else() {
         }
         _ => panic!("expected case"),
     }
+}
+
+#[test]
+fn i3() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "main = I 3",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+}
+
+#[test]
+fn skk3() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "main = S K K 3",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+}
+
+#[test]
+fn id_skk3() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "id = S K K; main = id 3",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+}
+
+#[test]
+fn twice3_id_skk3() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "id = S K K; main = id 3",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
 }

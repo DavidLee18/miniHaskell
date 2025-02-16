@@ -1,5 +1,6 @@
 use crate::core::{map_accuml, Addr, Heap, ASSOC};
 use crate::lang;
+use std::cmp::max;
 
 type TiState = (TiStack, TiDump, TiHeap, TiGlobals, TiStats);
 
@@ -8,18 +9,19 @@ type TiDump = ();
 
 type TiHeap = Heap<Node>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Node {
     Ap(Addr, Addr),
     SuperComb(lang::Name, Vec<lang::Name>, lang::CoreExpr),
     Num(i64),
 }
 type TiGlobals = ASSOC<lang::Name, Addr>;
-type TiStats = u64;
 
-fn apply_to_stats<F: FnOnce(&mut TiStats)>(f: F, s: &mut TiState) {
-    let (_, _, _, _, stats) = s;
-    f(stats);
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TiStats {
+    reductions: usize,
+    max_stack_size: usize,
+    heap_alloc_count: usize,
 }
 
 pub(crate) fn compile(p: lang::CoreProgram) -> TiState {
@@ -33,7 +35,18 @@ pub(crate) fn compile(p: lang::CoreProgram) -> TiState {
         .collect();
     let (init_heap, globals) = build_init_heap(sc_defs);
     let main_addr = lookup(&globals, &String::from("main")).expect("main is not defined");
-    (vec![*main_addr], (), init_heap, globals, 0)
+    let alloc_count = init_heap.alloc_count();
+    (
+        vec![*main_addr],
+        (),
+        init_heap,
+        globals,
+        TiStats {
+            heap_alloc_count: alloc_count,
+            max_stack_size: 1,
+            ..TiStats::default()
+        },
+    )
 }
 
 fn lookup<'a, A: PartialEq, B>(a: &'a ASSOC<A, B>, k: &A) -> Option<&'a B> {
@@ -71,8 +84,8 @@ pub(crate) fn eval(state: TiState) -> Vec<TiState> {
 
 fn step(state: &mut TiState) {
     let (stack, _, heap, _, _) = state;
-    println!("Stack: {:?}", stack);
-    println!("{:?}", heap);
+    // println!("Stack: {:?}", stack);
+    // println!("{:?}", heap);
 
     match heap
         .lookup(*stack.last().expect("Empty stack"))
@@ -93,13 +106,13 @@ fn sc_step(
     arg_names: Vec<lang::Name>,
     body: lang::CoreExpr,
 ) {
-    let (stack, _, heap, globals, _) = state;
+    let (stack, _, heap, globals, stat) = state;
     let arg_names_len = arg_names.len();
     let arg_bindings = arg_names
         .into_iter()
         .zip(heap.get_args(stack, arg_names_len))
         .collect::<Vec<_>>();
-    println!("Args: {:?}", arg_bindings);
+    // println!("Args: {:?}", arg_bindings);
     let env = arg_bindings
         .into_iter()
         .chain(globals.iter().cloned())
@@ -109,6 +122,7 @@ fn sc_step(
         stack.pop();
     }
     stack.push(result_addr);
+    stat.reductions += 1;
 }
 
 fn ti_final(state: &TiState) -> bool {
@@ -131,18 +145,22 @@ fn is_data_node(node: &Node) -> bool {
 }
 
 fn do_admin(state: &mut TiState) {
-    // apply_to_stats(ti_stat_inc_steps, state)
-}
-
-fn ti_stat_inc_steps(state: &mut TiStats) {
-    todo!()
+    let (stack, _, heap, _, stat) = state;
+    stat.heap_alloc_count = heap.alloc_count();
+    stat.max_stack_size = max(stat.max_stack_size, stack.len());
 }
 
 pub(crate) fn show_results(states: Vec<TiState>) -> String {
-    let (stack, _, heap, _, _) = states.last().expect("No states to show");
-    let nodes = stack
+    let last_state = states.last().expect("No states to show");
+    let nodes = get_stack_results(last_state);
+    let (_, _, _, _, stat) = last_state;
+    format!("{:?}", (nodes, stat))
+}
+
+pub(crate) fn get_stack_results(state: &TiState) -> Vec<Node> {
+    let (stack, _, heap, _, stat) = state;
+    stack
         .iter()
         .map(|addr| heap.lookup(*addr).expect("lookup failed").clone())
-        .collect::<Vec<_>>();
-    format!("{:?}", nodes)
+        .collect::<Vec<_>>()
 }
