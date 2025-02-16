@@ -65,11 +65,14 @@ pub(crate) fn eval(state: TiState) -> Vec<TiState> {
         step(&mut temp);
         do_admin(&mut temp);
     }
+    res.push(temp);
     res
 }
 
 fn step(state: &mut TiState) {
     let (stack, _, heap, _, _) = state;
+    println!("Stack: {:?}", stack);
+    println!("{:?}", heap);
 
     match heap
         .lookup(*stack.last().expect("Empty stack"))
@@ -80,7 +83,7 @@ fn step(state: &mut TiState) {
             let (sc, args, body) = (sc.clone(), args.clone(), body.clone());
             sc_step(state, sc, args, body)
         }
-        Node::Num(n) => panic!("Number applied as a function")
+        Node::Num(n) => panic!("Number applied as a function"),
     }
 }
 
@@ -94,19 +97,16 @@ fn sc_step(
     let arg_names_len = arg_names.len();
     let arg_bindings = arg_names
         .into_iter()
-        .zip(heap.get_args(stack))
+        .zip(heap.get_args(stack, arg_names_len))
         .collect::<Vec<_>>();
+    println!("Args: {:?}", arg_bindings);
     let env = arg_bindings
         .into_iter()
         .chain(globals.iter().cloned())
         .collect();
     let result_addr = heap.instantiate(body, &env);
-    let mut i = 0;
-    while let Some(_) = stack.pop() {
-        if i > arg_names_len {
-            break;
-        }
-        i += 1;
+    for _ in 0..=arg_names_len {
+        stack.pop();
     }
     stack.push(result_addr);
 }
@@ -139,5 +139,10 @@ fn ti_stat_inc_steps(state: &mut TiStats) {
 }
 
 pub(crate) fn show_results(states: Vec<TiState>) -> String {
-    format!("{:?}", states)
+    let (stack, _, heap, _, _) = states.last().expect("No states to show");
+    let nodes = stack
+        .iter()
+        .map(|addr| heap.lookup(*addr).expect("lookup failed").clone())
+        .collect::<Vec<_>>();
+    format!("{:?}", nodes)
 }

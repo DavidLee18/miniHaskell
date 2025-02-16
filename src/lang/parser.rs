@@ -91,8 +91,7 @@ pub(crate) fn expr6() -> Parser<CoreExpr> {
             axs[0].clone()
         } else {
             axs.into_iter()
-                .rev()
-                .reduce(|e1, e2| Expr::Ap(Box::new(e2.clone()), Box::new(e1.clone())))
+                .reduce(|e1, e2| Expr::Ap(Box::new(e1.clone()), Box::new(e2.clone())))
                 .expect("Syntax Error")
         }
     };

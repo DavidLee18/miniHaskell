@@ -79,13 +79,20 @@ impl<A> Heap<A> {
 }
 
 impl Heap<Node> {
-    pub fn get_args(&mut self, stack: &Vec<Addr>) -> Vec<Addr> {
+    pub fn get_args(&self, stack: &Vec<Addr>, len: usize) -> Vec<Addr> {
         let mut res = vec![];
-        for addr in stack.iter().rev() {
+        let mut i = 0;
+        for addr in stack.iter().rev().skip(1) {
             match self.lookup(*addr) {
-                Some(Node::Ap(fun, arg)) => res.push(*arg),
+                Some(Node::Ap(fun, arg)) => {
+                    i += 1;
+                    res.push(*arg)
+                }
                 _ => continue,
             }
+        }
+        if i < len {
+            panic!("not enough args: expected {}, got {}\nargs: {:?}", len, i, res);
         }
         res
     }
