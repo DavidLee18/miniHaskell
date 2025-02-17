@@ -62,7 +62,7 @@ fn sat<F: Fn(String) -> bool + 'static>(f: F) -> Parser<String> {
     })
 }
 
-const KEYWORDS: [&'static str; 6] = ["let", "letrec", "case", "in", "of", "Pack"];
+const KEYWORDS: [&'static str; 5] = ["let", "case", "in", "of", "Pack"];
 
 fn num() -> Parser<u32> {
     apply(

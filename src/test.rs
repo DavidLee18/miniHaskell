@@ -125,7 +125,7 @@ fn nested_let() {
 #[test]
 fn letrec() {
     let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "pair x y f = f x y; fst p = p K; snd p = p K1; f x y = letrec a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4",
+        "pair x y f = f x y; fst p = p K; snd p = p K1; f x y = let a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4",
     ))));
     let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
     assert_eq!(res_stack, vec![compiler::Node::Num(4)])
