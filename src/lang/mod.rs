@@ -14,7 +14,6 @@ pub enum Expr<A> {
     },
     Ap(Box<Expr<A>>, Box<Expr<A>>),
     Let {
-        is_rec: bool,
         defs: Vec<(A, Expr<A>)>,
         body: Box<Expr<A>>,
     },

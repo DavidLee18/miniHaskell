@@ -15,8 +15,7 @@ fn let_case() {
     assert_eq!(res[1].1[0], "x");
     assert_eq!(res[1].1[1], "y");
     match &res[1].2 {
-        Expr::Let { is_rec, defs, body } => {
-            assert!(!is_rec);
+        Expr::Let { defs, body } => {
             assert_eq!(defs[0].0, "z");
             assert_eq!(defs[0].1, Expr::Var("x".to_string()));
             assert_eq!(**body, Expr::Var("z".to_string()));
@@ -28,8 +27,7 @@ fn let_case() {
     assert_eq!(res[2].1[0], "x");
     match &res[2].2 {
         Expr::Case(be, als) => match &**be {
-            Expr::Let { is_rec, defs, body } => {
-                assert!(!is_rec);
+            Expr::Let { defs, body } => {
                 assert_eq!(defs[0].0, "y");
                 assert_eq!(defs[0].1, Expr::Var("x".to_string()));
                 assert_eq!(**body, Expr::Var("y".to_string()));
@@ -119,6 +117,15 @@ fn let_iii2() {
 fn nested_let() {
     let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
         "oct g x = let h = twice g in let k = twice h in k (k x); main = oct I 4",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(4)])
+}
+
+#[test]
+fn letrec() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "pair x y f = f x y; fst p = p K; snd p = p K1; f x y = letrec a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4",
     ))));
     let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
     assert_eq!(res_stack, vec![compiler::Node::Num(4)])

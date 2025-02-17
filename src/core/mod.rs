@@ -122,18 +122,13 @@ impl Heap<Node> {
                 let a2 = self.instantiate(*e2, env);
                 self.alloc(Node::Ap(a1, a2))
             }
-            CoreExpr::Let {
-                is_rec: false,
-                defs,
-                body,
-            } => {
+            CoreExpr::Let { defs, body, .. } => {
                 for (name, expr) in defs {
                     let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
                     env.insert(0, (name, addr));
                 }
                 self.instantiate(*body, env)
             }
-            CoreExpr::Let { .. } => panic!("unable to instantiate letrec yet"),
             CoreExpr::Case(_, _) => panic!("unable to instantiate case"),
             CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
         }

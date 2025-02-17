@@ -241,25 +241,10 @@ fn expr5() -> Parser<CoreExpr> {
 fn let_in() -> Parser<CoreExpr> {
     then4(
         |_, dfs, _, e| Expr::Let {
-            is_rec: false,
             defs: dfs,
             body: Box::new(e),
         },
         || lit(String::from("let")),
-        || one_or_more_with_sep(defn, || lit(String::from(";"))),
-        || lit(String::from("in")),
-        expr,
-    )
-}
-
-fn letrec_in() -> Parser<CoreExpr> {
-    then4(
-        |_, dfs, _, e| Expr::Let {
-            is_rec: true,
-            defs: dfs,
-            body: Box::new(e),
-        },
-        || lit(String::from("letrec")),
         || one_or_more_with_sep(defn, || lit(String::from(";"))),
         || lit(String::from("in")),
         expr,
@@ -287,9 +272,7 @@ fn lambda() -> Parser<CoreExpr> {
 }
 
 fn expr() -> Parser<CoreExpr> {
-    alt(let_in, || {
-        alt(letrec_in, || alt(case_of, || alt(lambda, expr1)))
-    })
+    alt(let_in, || alt(case_of, || alt(lambda, expr1)))
 }
 
 fn alter() -> Parser<CoreAlt> {

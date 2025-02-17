@@ -100,12 +100,7 @@ fn step(state: &mut TiState) {
     }
 }
 
-fn sc_step(
-    state: &mut TiState,
-    _: lang::Name,
-    arg_names: Vec<lang::Name>,
-    body: lang::CoreExpr,
-) {
+fn sc_step(state: &mut TiState, _: lang::Name, arg_names: Vec<lang::Name>, body: lang::CoreExpr) {
     let (stack, _, heap, globals, stat) = state;
     let arg_names_len = arg_names.len();
     let arg_bindings = arg_names
