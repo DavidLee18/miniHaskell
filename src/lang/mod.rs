@@ -22,6 +22,16 @@ pub enum Expr<A> {
     Lam(Vec<A>, Box<Expr<A>>),
 }
 
+impl<A> Expr<A> {
+    pub fn is_let(&self) -> bool {
+        match self {
+            Expr::Let { .. } => true,
+            Expr::Ap(a, b) => a.is_let() || b.is_let(),
+            _ => false,
+        }
+    }
+}
+
 pub(crate) type Name = String;
 pub(crate) type CoreExpr = Expr<Name>;
 type Alter<A> = (u32, Vec<A>, Expr<A>);

@@ -64,7 +64,7 @@ fn build_init_heap(sc_defs: Vec<lang::CoreScDefn>) -> (TiHeap, TiGlobals) {
 fn allocate_sc(heap: &mut TiHeap, sc_defs: lang::CoreScDefn) -> (lang::Name, Addr) {
     let (name, args, body) = sc_defs;
     let addr = heap.alloc(Node::SuperComb(name.clone(), args, body));
-    (name, addr.expect("heap alloc failed"))
+    (name, addr)
 }
 
 pub(crate) fn eval(state: TiState) -> Vec<TiState> {
@@ -91,18 +91,18 @@ fn step(state: &mut TiState) {
         .lookup(*stack.last().expect("Empty stack"))
         .expect("cannot be found on heap")
     {
-        Node::Ap(a1, a2) => stack.push(*a1),
+        Node::Ap(a1, _) => stack.push(*a1),
         Node::SuperComb(sc, args, body) => {
             let (sc, args, body) = (sc.clone(), args.clone(), body.clone());
             sc_step(state, sc, args, body)
         }
-        Node::Num(n) => panic!("Number applied as a function"),
+        Node::Num(_) => panic!("Number applied as a function"),
     }
 }
 
 fn sc_step(
     state: &mut TiState,
-    sc_name: lang::Name,
+    _: lang::Name,
     arg_names: Vec<lang::Name>,
     body: lang::CoreExpr,
 ) {
@@ -112,16 +112,25 @@ fn sc_step(
         .into_iter()
         .zip(heap.get_args(stack, arg_names_len))
         .collect::<Vec<_>>();
-    // println!("Args: {:?}", arg_bindings);
-    let env = arg_bindings
-        .into_iter()
-        .chain(globals.iter().cloned())
-        .collect();
-    let result_addr = heap.instantiate(body, &env);
+    for arg in &arg_bindings {
+        globals.insert(0, arg.clone());
+    }
+    let is_let = body.is_let();
+    let result_addr = heap.instantiate(body, globals);
     for _ in 0..=arg_names_len {
         stack.pop();
     }
     stack.push(result_addr);
+    if !is_let {
+        for (name, _) in arg_bindings {
+            for i in 0..globals.len() {
+                if globals[i].0 == name {
+                    globals.remove(i);
+                    break;
+                }
+            }
+        }
+    }
     stat.reductions += 1;
 }
 
@@ -139,7 +148,7 @@ fn ti_final(state: &TiState) -> bool {
 
 fn is_data_node(node: &Node) -> bool {
     match node {
-        Node::Num(n) => true,
+        Node::Num(_) => true,
         _ => false,
     }
 }
@@ -158,7 +167,7 @@ pub(crate) fn show_results(states: Vec<TiState>) -> String {
 }
 
 pub(crate) fn get_stack_results(state: &TiState) -> Vec<Node> {
-    let (stack, _, heap, _, stat) = state;
+    let (stack, _, heap, _, _) = state;
     stack
         .iter()
         .map(|addr| heap.lookup(*addr).expect("lookup failed").clone())

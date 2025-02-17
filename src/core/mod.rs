@@ -45,12 +45,12 @@ impl<A> Heap<A> {
         i
     }
 
-    pub fn alloc(&mut self, val: A) -> Option<Addr> {
+    pub fn alloc(&mut self, val: A) -> Addr {
         let addr = self.get_addr();
         self.size += 1;
         self.cts.push((addr, val));
         self.alloc_count += 1;
-        Some(addr)
+        addr
     }
 
     pub fn alloc_count(&self) -> usize {
@@ -91,7 +91,7 @@ impl Heap<Node> {
         let mut i = 0;
         for addr in stack.iter().rev().skip(1) {
             match self.lookup(*addr) {
-                Some(Node::Ap(fun, arg)) => {
+                Some(Node::Ap(_, arg)) => {
                     i += 1;
                     res.push(*arg)
                 }
@@ -107,22 +107,33 @@ impl Heap<Node> {
         res
     }
 
-    pub fn instantiate(&mut self, expr: CoreExpr, env: &ASSOC<Name, Addr>) -> Addr {
+    pub fn instantiate(&mut self, expr: CoreExpr, env: &mut ASSOC<Name, Addr>) -> Addr {
+        // println!("env: {:?}", env);
         match expr {
             CoreExpr::Var(v) => env
                 .iter()
                 .find(|(n, _)| *n == v)
                 .map(|(_, addr)| *addr)
                 .expect(&format!("undefined name {}", v)),
-            CoreExpr::Num(n) => self.alloc(Node::Num(n)).expect("heap alloc failed"),
+            CoreExpr::Num(n) => self.alloc(Node::Num(n)),
             CoreExpr::Constr { .. } => panic!("unable to instantiate constr yet"),
             CoreExpr::Ap(e1, e2) => {
                 let a1 = self.instantiate(*e1, env);
                 let a2 = self.instantiate(*e2, env);
                 self.alloc(Node::Ap(a1, a2))
-                    .expect("heap instantiate failed")
             }
-            CoreExpr::Let { .. } => panic!("unable to instantiate let yet"),
+            CoreExpr::Let {
+                is_rec: false,
+                defs,
+                body,
+            } => {
+                for (name, expr) in defs {
+                    let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
+                    env.insert(0, (name, addr));
+                }
+                self.instantiate(*body, env)
+            }
+            CoreExpr::Let { .. } => panic!("unable to instantiate letrec yet"),
             CoreExpr::Case(_, _) => panic!("unable to instantiate case"),
             CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
         }

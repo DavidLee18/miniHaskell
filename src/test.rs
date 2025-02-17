@@ -105,3 +105,21 @@ fn twice3_id_skk3() {
     let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
     assert_eq!(res_stack, vec![compiler::Node::Num(3)])
 }
+
+#[test]
+fn let_iii2() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "main = let id1 = I I I in id1 id1 3",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+}
+
+#[test]
+fn nested_let() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "oct g x = let h = twice g in let k = twice h in k (k x); main = oct I 4",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(4)])
+}
