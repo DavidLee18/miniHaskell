@@ -1,5 +1,6 @@
 use crate::compiler::Node;
 use crate::lang::{CoreExpr, Name};
+use std::collections::VecDeque;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(crate) struct Heap<A> {
@@ -8,19 +9,19 @@ pub(crate) struct Heap<A> {
     alloc_count: usize,
 }
 pub(crate) type Addr = usize;
-pub(crate) type ASSOC<A, B> = Vec<(A, B)>;
+pub(crate) type ASSOC<A, B> = VecDeque<(A, B)>;
 
 pub(crate) fn map_accuml<A, B, C, F: Fn(&mut A, B) -> C>(
     f: F,
     acc: &mut A,
     inputs: Vec<B>,
-) -> Vec<C> {
+) -> VecDeque<C> {
     if inputs.is_empty() {
-        vec![]
+        VecDeque::new()
     } else {
-        let mut res = vec![];
+        let mut res = VecDeque::new();
         for input in inputs {
-            res.push(f(acc, input));
+            res.push_back(f(acc, input));
         }
         res
     }
@@ -122,10 +123,10 @@ impl Heap<Node> {
                 let a2 = self.instantiate(*e2, env);
                 self.alloc(Node::Ap(a1, a2))
             }
-            CoreExpr::Let { defs, body, .. } => {
+            CoreExpr::Let { defs, body } => {
                 for (name, expr) in defs {
                     let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
-                    env.insert(0, (name, addr));
+                    env.push_front((name, addr));
                 }
                 self.instantiate(*body, env)
             }

@@ -14,6 +14,7 @@ pub(crate) enum Node {
     Ap(Addr, Addr),
     SuperComb(lang::Name, Vec<lang::Name>, lang::CoreExpr),
     Num(i64),
+    Ind(Addr),
 }
 type TiGlobals = ASSOC<lang::Name, Addr>;
 
@@ -87,20 +88,23 @@ fn step(state: &mut TiState) {
     // println!("Stack: {:?}", stack);
     // println!("{:?}", heap);
 
-    match heap
-        .lookup(*stack.last().expect("Empty stack"))
-        .expect("cannot be found on heap")
-    {
+    let last_stack = *stack.last().expect("Empty stack");
+
+    match heap.lookup(last_stack).expect("cannot be found on heap") {
         Node::Ap(a1, _) => stack.push(*a1),
         Node::SuperComb(sc, args, body) => {
-            let (sc, args, body) = (sc.clone(), args.clone(), body.clone());
-            sc_step(state, sc, args, body)
+            let (_, args, body) = (sc.clone(), args.clone(), body.clone());
+            sc_step(state, last_stack, args, body)
         }
         Node::Num(_) => panic!("Number applied as a function"),
+        Node::Ind(r) => {
+            stack.pop();
+            stack.push(*r);
+        }
     }
 }
 
-fn sc_step(state: &mut TiState, _: lang::Name, arg_names: Vec<lang::Name>, body: lang::CoreExpr) {
+fn sc_step(state: &mut TiState, sc_addr: Addr, arg_names: Vec<lang::Name>, body: lang::CoreExpr) {
     let (stack, _, heap, globals, stat) = state;
     let arg_names_len = arg_names.len();
     let arg_bindings = arg_names
@@ -115,6 +119,10 @@ fn sc_step(state: &mut TiState, _: lang::Name, arg_names: Vec<lang::Name>, body:
     for _ in 0..=arg_names_len {
         stack.pop();
     }
+    heap.update(
+        arg_bindings.last().map(|(_, a)| *a).unwrap_or(sc_addr),
+        Node::Ind(result_addr),
+    );
     stack.push(result_addr);
     if !is_let {
         for (name, _) in arg_bindings {
