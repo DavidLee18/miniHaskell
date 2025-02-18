@@ -11,7 +11,7 @@ fn run(p: PathBuf) -> String {
 }
 
 fn main() {
-    let program = "main = let f = f in f";
+    let program = "id x = x; main = twice twice id 3";
     println!(
         "{}",
         compiler::show_results(compiler::eval(compiler::compile(lang::parse_raw(

@@ -111,8 +111,8 @@ fn sc_step(state: &mut TiState, sc_addr: Addr, arg_names: Vec<lang::Name>, body:
         .into_iter()
         .zip(heap.get_args(stack, arg_names_len))
         .collect::<Vec<_>>();
-    for arg in &arg_bindings {
-        globals.insert(0, arg.clone());
+    for arg in arg_bindings.iter().rev() {
+        globals.push_front(arg.clone());
     }
     let is_let = body.is_let();
     let result_addr = heap.instantiate(body, globals);
