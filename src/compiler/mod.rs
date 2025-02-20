@@ -115,15 +115,10 @@ fn sc_step(state: &mut TiState, sc_addr: Addr, arg_names: Vec<lang::Name>, body:
         globals.push_front(arg.clone());
     }
     let is_let = body.is_let();
-    let result_addr = heap.instantiate(body, globals);
     for _ in 0..arg_names_len {
         stack.pop();
     }
-    heap.update(
-        stack.pop().unwrap_or(sc_addr),
-        Node::Ind(result_addr),
-    );
-    stack.push(result_addr);
+    heap.instantiate_and_update(body, *stack.last().unwrap_or(&sc_addr), globals);
     if !is_let {
         for (name, _) in arg_bindings {
             for i in 0..globals.len() {

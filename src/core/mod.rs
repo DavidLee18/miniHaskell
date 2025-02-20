@@ -134,4 +134,38 @@ impl Heap<Node> {
             CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
         }
     }
+
+    pub fn instantiate_and_update(
+        &mut self,
+        body: CoreExpr,
+        root_addr: Addr,
+        env: &mut ASSOC<Name, Addr>,
+    ) {
+        match body {
+            CoreExpr::Var(a) => {
+                let a_addr = env
+                    .iter()
+                    .find(|(n, _)| *n == a)
+                    .map(|(_, addr)| *addr)
+                    .expect(&format!("undefined name {}", a));
+                self.update(root_addr, Node::Ind(a_addr));
+            }
+            CoreExpr::Num(n) => self.update(root_addr, Node::Num(n)),
+            CoreExpr::Constr { .. } => panic!("unable to instantiate constr yet"),
+            CoreExpr::Ap(e1, e2) => {
+                let a1 = self.instantiate(*e1, env);
+                let a2 = self.instantiate(*e2, env);
+                self.update(root_addr, Node::Ap(a1, a2));
+            }
+            CoreExpr::Let { defs, body } => {
+                for (name, expr) in defs {
+                    let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
+                    env.push_front((name, addr));
+                }
+                self.instantiate_and_update(*body, root_addr, env);
+            }
+            CoreExpr::Case(_, _) => panic!("unable to instantiate case"),
+            CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
+        }
+    }
 }
