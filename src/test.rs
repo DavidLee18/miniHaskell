@@ -130,3 +130,21 @@ fn letrec() {
     let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
     assert_eq!(res_stack, vec![compiler::Node::Num(4)])
 }
+
+#[test]
+fn negate() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "main = negate 3",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(-3)])
+}
+
+#[test]
+fn simple_arithmetic() {
+    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+        "main = 4*5+(2-5)",
+    ))));
+    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
+    assert_eq!(res_stack, vec![compiler::Node::Num(17)])
+}

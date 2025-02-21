@@ -96,14 +96,11 @@ impl Heap<Node> {
                     i += 1;
                     res.push(*arg)
                 }
-                _ => continue,
+                _ => panic!("arg is not an Ap node"),
             }
         }
         if i < len {
-            panic!(
-                "not enough args: expected {}, got {}\nargs: {:?}",
-                len, i, res
-            );
+            panic!("not enough args: expected {}, got {}", len, i);
         }
         res
     }
@@ -141,6 +138,7 @@ impl Heap<Node> {
         root_addr: Addr,
         env: &mut ASSOC<Name, Addr>,
     ) {
+        // println!("env: {:?}", env);
         match body {
             CoreExpr::Var(a) => {
                 let a_addr = env

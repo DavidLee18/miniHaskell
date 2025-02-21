@@ -15,6 +15,10 @@ fn run(s: String) -> String {
 }
 
 fn main() {
-    let program = String::from("oct g x = let h = twice g in let k = twice h in k (k x); main = oct I 4");
+    let program = String::from(
+        r#"
+    main = negate (I 3)
+    "#,
+    );
     println!("{}", run(program));
 }
