@@ -53,7 +53,7 @@ pub const PRELUDE_DEFS: &'static str = "I x = x; K x y = x; K1 x y = y; S f g x 
 
 type Token = (u32, String);
 
-pub(crate) fn clex(input: String) -> Vec<Token> {
+fn clex(input: String) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
     let mut chars = input.chars();
     let mut c = chars.next();
@@ -125,16 +125,17 @@ pub(crate) fn clex(input: String) -> Vec<Token> {
 
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
 
-pub fn syntax(tokens: Vec<Token>) -> CoreProgram {
-    take_first_parse(parser::program()(tokens))
-}
-
-fn take_first_parse(programs: Vec<(CoreProgram, Vec<Token>)>) -> CoreProgram {
-    programs
+fn syntax(tokens: Vec<Token>) -> Result<Vec<CoreProgram>, SyntaxError> {
+    let ress = parser::program()(tokens)
         .into_iter()
-        .find(|(_, v)| v.is_empty())
+        .filter(|(_, v)| v.is_empty())
         .map(|(p, _)| p)
-        .expect("Syntax error")
+        .collect::<Vec<_>>();
+    if ress.is_empty() {
+        Err(SyntaxError)
+    } else {
+        Ok(ress)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -170,11 +171,14 @@ fn mult_final(m: MultState) -> bool {
     m == 0 && d == 0
 }
 
-pub(crate) fn parse(p: PathBuf) -> CoreProgram {
+pub fn parse(p: PathBuf) -> Result<Vec<CoreProgram>, SyntaxError> {
     let s = read_to_string(p).expect("Failed to read file");
     syntax(clex(s))
 }
 
-pub(crate) fn parse_raw(s: String) -> CoreProgram {
+pub fn parse_raw(s: String) -> Result<Vec<CoreProgram>, SyntaxError> {
     syntax(clex(s))
 }
+
+#[derive(Debug)]
+pub struct SyntaxError;

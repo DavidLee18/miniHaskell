@@ -58,12 +58,13 @@ impl<A> Heap<A> {
         self.alloc_count
     }
 
-    pub fn update(&mut self, addr: Addr, val: A) {
+    pub fn update(&mut self, addr: Addr, val: A) -> Result<(), HeapError> {
         let v = self.cts.iter_mut().find(|(a, _)| *a == addr);
         match v {
-            None => {}
+            None => Err(HeapError::NotFound),
             Some(v) => {
                 v.1 = val;
+                Ok(())
             }
         }
     }
@@ -81,44 +82,55 @@ impl<A> Heap<A> {
         self.cts.iter().map(|&(a, _)| a).collect()
     }
 
-    pub fn lookup(&self, addr: Addr) -> Option<&A> {
-        self.cts.iter().find(|(a, _)| *a == addr).map(|(_, v)| v)
+    pub fn lookup(&self, addr: Addr) -> Result<&A, HeapError> {
+        self.cts
+            .iter()
+            .find(|(a, _)| *a == addr)
+            .map(|(_, v)| v)
+            .ok_or(HeapError::NotFound)
     }
 }
 
 impl Heap<Node> {
-    pub fn get_args(&self, stack: &Vec<Addr>, len: usize) -> Vec<Addr> {
+    pub fn get_args(&self, stack: &Vec<Addr>, len: usize) -> Result<Vec<Addr>, HeapError> {
         let mut res = vec![];
         let mut i = 0;
         for addr in stack.iter().rev().skip(1) {
             match self.lookup(*addr) {
-                Some(Node::Ap(_, arg)) => {
+                Ok(Node::Ap(_, arg)) => {
                     i += 1;
-                    res.push(*arg)
+                    res.push(*arg);
                 }
-                _ => panic!("arg is not an Ap node"),
+                _ => return Err(HeapError::NotAp),
             }
         }
         if i < len {
-            panic!("not enough args: expected {}, got {}", len, i);
+            return Err(HeapError::ArgsLengthMismatch {
+                expected: len,
+                actual: i,
+            });
         }
-        res
+        Ok(res)
     }
 
-    pub fn instantiate(&mut self, expr: CoreExpr, env: &mut ASSOC<Name, Addr>) -> Addr {
-        // println!("env: {:?}", env);
+    pub fn instantiate(
+        &mut self,
+        expr: CoreExpr,
+        env: &mut ASSOC<Name, Addr>,
+    ) -> Result<Addr, HeapError> {
+        println!("env: {:?}", env);
         match expr {
             CoreExpr::Var(v) => env
                 .iter()
                 .find(|(n, _)| *n == v)
                 .map(|(_, addr)| *addr)
-                .expect(&format!("undefined name {}", v)),
-            CoreExpr::Num(n) => self.alloc(Node::Num(n)),
-            CoreExpr::Constr { .. } => panic!("unable to instantiate constr yet"),
+                .ok_or(HeapError::UndefinedName(v)),
+            CoreExpr::Num(n) => Ok(self.alloc(Node::Num(n))),
+            CoreExpr::Constr { .. } => Err(HeapError::NotInstantiable),
             CoreExpr::Ap(e1, e2) => {
-                let a1 = self.instantiate(*e1, env);
-                let a2 = self.instantiate(*e2, env);
-                self.alloc(Node::Ap(a1, a2))
+                let a1 = self.instantiate(*e1, env)?;
+                let a2 = self.instantiate(*e2, env)?;
+                Ok(self.alloc(Node::Ap(a1, a2)))
             }
             CoreExpr::Let { defs, body } => {
                 for (name, expr) in defs {
@@ -127,8 +139,8 @@ impl Heap<Node> {
                 }
                 self.instantiate(*body, env)
             }
-            CoreExpr::Case(_, _) => panic!("unable to instantiate case"),
-            CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
+            CoreExpr::Case(_, _) => Err(HeapError::NotInstantiable),
+            CoreExpr::Lam(_, _) => Err(HeapError::NotInstantiable),
         }
     }
 
@@ -137,33 +149,42 @@ impl Heap<Node> {
         body: CoreExpr,
         root_addr: Addr,
         env: &mut ASSOC<Name, Addr>,
-    ) {
-        // println!("env: {:?}", env);
+    ) -> Result<(), HeapError> {
+        println!("env: {:?}", env);
         match body {
             CoreExpr::Var(a) => {
                 let a_addr = env
                     .iter()
                     .find(|(n, _)| *n == a)
                     .map(|(_, addr)| *addr)
-                    .expect(&format!("undefined name {}", a));
-                self.update(root_addr, Node::Ind(a_addr));
+                    .ok_or(HeapError::UndefinedName(a))?;
+                self.update(root_addr, Node::Ind(a_addr))
             }
             CoreExpr::Num(n) => self.update(root_addr, Node::Num(n)),
-            CoreExpr::Constr { .. } => panic!("unable to instantiate constr yet"),
+            CoreExpr::Constr { .. } => Err(HeapError::NotInstantiable),
             CoreExpr::Ap(e1, e2) => {
-                let a1 = self.instantiate(*e1, env);
-                let a2 = self.instantiate(*e2, env);
-                self.update(root_addr, Node::Ap(a1, a2));
+                let a1 = self.instantiate(*e1, env)?;
+                let a2 = self.instantiate(*e2, env)?;
+                self.update(root_addr, Node::Ap(a1, a2))
             }
             CoreExpr::Let { defs, body } => {
                 for (name, expr) in defs {
                     let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
                     env.push_front((name, addr));
                 }
-                self.instantiate_and_update(*body, root_addr, env);
+                self.instantiate_and_update(*body, root_addr, env)
             }
-            CoreExpr::Case(_, _) => panic!("unable to instantiate case"),
-            CoreExpr::Lam(_, _) => panic!("unable to instantiate lam"),
+            CoreExpr::Case(_, _) => Err(HeapError::NotInstantiable),
+            CoreExpr::Lam(_, _) => Err(HeapError::NotInstantiable),
         }
     }
+}
+
+#[derive(Debug)]
+pub enum HeapError {
+    NotFound,
+    NotAp,
+    ArgsLengthMismatch { expected: usize, actual: usize },
+    NotInstantiable,
+    UndefinedName(String),
 }

@@ -71,7 +71,7 @@ fn num() -> Parser<u32> {
     )
 }
 
-pub(crate) fn program() -> Parser<CoreProgram> {
+pub fn program() -> Parser<CoreProgram> {
     one_or_more_with_sep(sc, || lit(String::from(";")))
 }
 
