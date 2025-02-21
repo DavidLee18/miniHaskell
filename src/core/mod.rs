@@ -118,7 +118,7 @@ impl Heap<Node> {
         expr: CoreExpr,
         env: &mut ASSOC<Name, Addr>,
     ) -> Result<Addr, HeapError> {
-        println!("env: {:?}", env);
+        // println!("env: {:?}", env);
         match expr {
             CoreExpr::Var(v) => env
                 .iter()
@@ -150,7 +150,7 @@ impl Heap<Node> {
         root_addr: Addr,
         env: &mut ASSOC<Name, Addr>,
     ) -> Result<(), HeapError> {
-        println!("env: {:?}", env);
+        // println!("env: {:?}", env);
         match body {
             CoreExpr::Var(a) => {
                 let a_addr = env

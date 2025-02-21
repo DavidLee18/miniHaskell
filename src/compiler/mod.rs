@@ -115,7 +115,7 @@ pub(crate) fn eval(state: TiState) -> Result<Vec<TiState>, EvalError> {
     res.push(temp.clone());
     step(&mut temp)?;
     do_admin(&mut temp);
-    while !ti_final(&temp) {
+    while !ti_final(&temp)? {
         res.push(temp.clone());
         step(&mut temp)?;
         do_admin(&mut temp);
@@ -126,9 +126,9 @@ pub(crate) fn eval(state: TiState) -> Result<Vec<TiState>, EvalError> {
 
 fn step(state: &mut TiState) -> Result<(), EvalError> {
     let (stack, dump, heap, _, _) = state;
-    println!("Stack: {:?}", stack);
-    println!("Dump: {:?}", dump);
-    println!("{:?}", heap);
+    // println!("Stack: {:?}", stack);
+    // println!("Dump: {:?}", dump);
+    // println!("{:?}", heap);
 
     let last_stack = *stack.last().ok_or(EvalError::EmptyStack)?;
 
@@ -201,14 +201,14 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                 let Node::Num(n) = arg1 else {
                     stack.pop().ok_or(EvalError::EmptyStack)?;
                     dump.push(stack.clone());
-                    *stack = args;
+                    *stack = vec![args[0]];
                     return Ok(());
                 };
                 let arg2 = heap.lookup(args[1]).map_err(EvalError::Heap)?;
                 let Node::Num(m) = arg2 else {
                     stack.pop().ok_or(EvalError::EmptyStack)?;
                     dump.push(stack.clone());
-                    *stack = args;
+                    *stack = vec![args[1]];
                     return Ok(());
                 };
                 stack.pop().ok_or(EvalError::EmptyStack)?;
@@ -261,16 +261,19 @@ fn sc_step(
     Ok(())
 }
 
-fn ti_final(state: &TiState) -> bool {
+fn ti_final(state: &TiState) -> Result<bool, EvalError> {
     let (stack, dump, heap, _, _) = state;
-    dump.is_empty()
-        && match stack.len() {
-        1 => heap
-            .lookup(stack[0])
-            .map(Node::is_data_node)
-            .unwrap_or(false),
-        0 => panic!("Empty stack!"),
-        _ => false,
+    if !dump.is_empty() {
+        Ok(false)
+    } else {
+        match stack.len() {
+            1 => heap
+                .lookup(stack[0])
+                .map(Node::is_data_node)
+                .map_err(EvalError::Heap),
+            0 => Err(EvalError::EmptyStack),
+            _ => Ok(false),
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::compiler::{Node, ResultError, TiStats};
+use crate::lang::SyntaxError;
 use std::path::PathBuf;
 
 pub mod compiler;
@@ -23,9 +24,8 @@ fn run_file(p: PathBuf) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>
         .collect::<Vec<_>>())
 }
 
-fn run(s: String) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>, ResultError> {
-    let state = lang::parse_raw(s)
-        .map_err(ResultError::Syntax)?
+fn run(s: String) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>, SyntaxError> {
+    let state = lang::parse_raw(s)?
         .into_iter()
         .map(|p| compiler::compile(p).map_err(ResultError::Compile))
         .collect::<Vec<_>>();
@@ -40,10 +40,6 @@ fn run(s: String) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>, Resu
 }
 
 fn main() {
-    let program = String::from(
-        r#"
-    main = 4*5+(2-5)
-    "#,
-    );
+    let program = String::from(r#"main = 4*5+(2-5)"#);
     println!("{:?}", run(program));
 }

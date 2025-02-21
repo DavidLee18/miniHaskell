@@ -1,20 +1,24 @@
 use super::*;
+use crate::compiler::EvalError;
 use crate::lang::Expr;
 
 #[test]
 fn let_case() {
     let res = lang::syntax(lang::clex(String::from(
         "f = 3 ; g x y = let z = x in z ; h x = case (let y = x in y) of <1> -> 2 ; <2> -> 5",
-    )));
+    )))
+        .expect("expected to be parsed");
 
-    assert_eq!(res[0].0, "f");
-    assert!(res[0].1.is_empty());
-    assert_eq!(res[0].2, Expr::Num(3));
+    assert_eq!(res.len(), 1);
 
-    assert_eq!(res[1].0, "g");
-    assert_eq!(res[1].1[0], "x");
-    assert_eq!(res[1].1[1], "y");
-    match &res[1].2 {
+    assert_eq!(res[0][0].0, "f");
+    assert!(res[0][0].1.is_empty());
+    assert_eq!(res[0][0].2, Expr::Num(3));
+
+    assert_eq!(res[0][1].0, "g");
+    assert_eq!(res[0][1].1[0], "x");
+    assert_eq!(res[0][1].1[1], "y");
+    match &res[0][1].2 {
         Expr::Let { defs, body } => {
             assert_eq!(defs[0].0, "z");
             assert_eq!(defs[0].1, Expr::Var("x".to_string()));
@@ -23,9 +27,9 @@ fn let_case() {
         _ => panic!("expected let"),
     }
 
-    assert_eq!(res[2].0, "h");
-    assert_eq!(res[2].1[0], "x");
-    match &res[2].2 {
+    assert_eq!(res[0][2].0, "h");
+    assert_eq!(res[0][2].1[0], "x");
+    match &res[0][2].2 {
         Expr::Case(be, als) => match &**be {
             Expr::Let { defs, body } => {
                 assert_eq!(defs[0].0, "y");
@@ -44,16 +48,20 @@ fn let_case() {
 fn dangling_else() {
     let res = lang::syntax(lang::clex(String::from(
         "f x y = case x of <1> -> case y of <1> -> 1; <2> -> 2",
-    )));
+    )))
+        .expect("expected to be parsed");
 
-    assert_eq!(res[0].0, "f");
-    assert_eq!(res[0].1[0], "x");
-    assert_eq!(res[0].1[1], "y");
-    match &res[0].2 {
+    assert_eq!(res.len(), 2);
+
+    assert_eq!(res[0][0].0, "f");
+    assert_eq!(res[0][0].1[0], "x");
+    assert_eq!(res[0][0].1[1], "y");
+    match &res[0][0].2 {
         Expr::Case(be, als) => {
             assert_eq!(**be, Expr::Var("x".to_string()));
             assert_eq!(als[0].0, 1);
             assert!(als[0].1.is_empty());
+            assert_eq!(als.len(), 1);
             match &als[0].2 {
                 Expr::Case(y, als2) => {
                     assert_eq!(**y, Expr::Var("y".to_string()));
@@ -66,85 +74,212 @@ fn dangling_else() {
         }
         _ => panic!("expected case"),
     }
+
+    assert_eq!(res[1][0].0, "f");
+    assert_eq!(res[1][0].1[0], "x");
+    assert_eq!(res[1][0].1[1], "y");
+    match &res[1][0].2 {
+        Expr::Case(be, als) => {
+            assert_eq!(**be, Expr::Var("x".to_string()));
+            assert_eq!(als[0].0, 1);
+            assert!(als[0].1.is_empty());
+            assert_eq!(als.len(), 2);
+            match &als[0].2 {
+                Expr::Case(y, als2) => {
+                    assert_eq!(**y, Expr::Var("y".to_string()));
+                    assert_eq!(als2[0], (1, vec![], Expr::Num(1)));
+                    assert_eq!(als2.len(), 1);
+                }
+                _ => panic!("expected case"),
+            }
+            assert_eq!(als[1], (2, vec![], Expr::Num(2)));
+        }
+        _ => panic!("expected case"),
+    }
 }
 
 #[test]
 fn i3() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "main = I 3",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+    let res = run(String::from("main = I 3"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn skk3() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "main = S K K 3",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+    let res = run(String::from("main = S K K 3"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn id_skk3() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "id = S K K; main = id 3",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+    let res = run(String::from("id = S K K; main = id 3"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn twice3_id_skk3() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "id = S K K; main = twice twice twice id 3",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+    let res = run(String::from("id = S K K; main = twice twice twice id 3"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn let_iii2() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "main = let id1 = I I I in id1 id1 3",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(3)])
+    let res = run(String::from("main = let id1 = I I I in id1 id1 3"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn nested_let() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
+    let res = run(String::from(
         "oct g x = let h = twice g in let k = twice h in k (k x); main = oct I 4",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(4)])
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(4));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn letrec() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "pair x y f = f x y; fst p = p K; snd p = p K1; f x y = let a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(4)])
+    let res = run(String::from("pair x y f = f x y; fst p = p K; snd p = p K1; f x y = let a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(4));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn negate() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "main = negate 3",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(-3)])
+    let res = run(String::from("main = negate 3"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(-3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn negate_ind() {
+    let res = run(String::from("main = negate (I 3)"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(-3));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }
 
 #[test]
 fn simple_arithmetic() {
-    let res = compiler::eval(compiler::compile(lang::parse_raw(String::from(
-        "main = 4*5+(2-5)",
-    ))));
-    let res_stack = compiler::get_stack_results(res.last().expect("Empty states"));
-    assert_eq!(res_stack, vec![compiler::Node::Num(17)])
+    let res = run(String::from("main = 4*5+(2-5)"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 2);
+            match &v[0] {
+                Err(ResultError::Eval(EvalError::NumAp)) => (),
+                _ => panic!("expected to fail"),
+            }
+            match &v[1] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(17));
+                }
+                _ => panic!("expected number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
 }

@@ -53,7 +53,7 @@ pub const PRELUDE_DEFS: &'static str = "I x = x; K x y = x; K1 x y = y; S f g x 
 
 type Token = (u32, String);
 
-fn clex(input: String) -> Vec<Token> {
+pub(crate) fn clex(input: String) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
     let mut chars = input.chars();
     let mut c = chars.next();
@@ -125,7 +125,7 @@ fn clex(input: String) -> Vec<Token> {
 
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
 
-fn syntax(tokens: Vec<Token>) -> Result<Vec<CoreProgram>, SyntaxError> {
+pub(crate) fn syntax(tokens: Vec<Token>) -> Result<Vec<CoreProgram>, SyntaxError> {
     let ress = parser::program()(tokens)
         .into_iter()
         .filter(|(_, v)| v.is_empty())
