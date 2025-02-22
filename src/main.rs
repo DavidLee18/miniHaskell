@@ -42,8 +42,9 @@ fn run(s: String) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>, Synt
 fn main() {
     let program = String::from(
         r#"
-        main = xor False True
-    "#,
+            fib n = if (n <= 1) n (fib (n-1) + fib (n-2));
+            main = fib 4
+        "#,
     );
     println!("{:?}", run(program));
 }

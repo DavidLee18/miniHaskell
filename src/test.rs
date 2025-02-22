@@ -301,3 +301,82 @@ fn logical_operations() {
         _ => panic!("expected to be evaluated"),
     }
 }
+
+#[test]
+fn factorial() {
+    let res = run(String::from(
+        r#"
+        fac n = if (n == 0) 1 (n * fac (n-1));
+        main = fac 5
+    "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 2);
+            match &v[0] {
+                Err(ResultError::Eval(EvalError::NumAp)) => (),
+                _ => panic!("expected to fail"),
+            }
+            match &v[1] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(120));
+                }
+                _ => panic!("expected a number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn gcd() {
+    let res = run(String::from(
+        r#"
+        gcd a b = if (a == b) a (if (a < b) (gcd b a) (gcd b (a-b)));
+        main = gcd 6 10
+    "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(2));
+                }
+                _ => panic!("expected a number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn fibonacci() {
+    let res = run(String::from(
+        r#"
+            fib n = if (n <= 1) n (fib (n-1) + fib (n-2));
+            main = fib 4
+        "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 4);
+            for i in 0..3 {
+                match &v[i] {
+                    Err(ResultError::Eval(EvalError::NumAp)) => (),
+                    _ => panic!("expected to fail"),
+                }
+            }
+            match &v[3] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(3));
+                }
+                _ => panic!("expected a number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}

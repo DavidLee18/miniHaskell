@@ -177,7 +177,8 @@ pub fn parse(p: PathBuf) -> Result<Vec<CoreProgram>, SyntaxError> {
 }
 
 pub fn parse_raw(s: String) -> Result<Vec<CoreProgram>, SyntaxError> {
-    syntax(clex(s))
+    let tokens = clex(s);
+    syntax(tokens)
 }
 
 #[derive(Debug)]

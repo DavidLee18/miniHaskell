@@ -185,6 +185,18 @@ impl Heap<Node> {
             CoreExpr::Lam(_, _) => Err(HeapError::NotInstantiable),
         }
     }
+
+    pub fn node_ref_eq(&self, a: &Node, b: &Node) -> Result<bool, HeapError> {
+        let mut a = a;
+        let mut b = b;
+        while let Node::Ind(a_) = a {
+            a = self.lookup(*a_)?;
+        }
+        while let Node::Ind(b_) = b {
+            b = self.lookup(*b_)?;
+        }
+        Ok(a == b)
+    }
 }
 
 #[derive(Debug)]
