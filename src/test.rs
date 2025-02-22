@@ -109,7 +109,7 @@ fn i3() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -127,7 +127,7 @@ fn skk3() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -145,7 +145,7 @@ fn id_skk3() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -163,7 +163,7 @@ fn twice3_id_skk3() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -181,7 +181,7 @@ fn let_iii2() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -201,7 +201,7 @@ fn nested_let() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(4));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -219,7 +219,7 @@ fn letrec() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(4));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -237,7 +237,7 @@ fn negate() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(-3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -255,7 +255,7 @@ fn negate_ind() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(-3));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
             }
         }
         _ => panic!("expected to be evaluated"),
@@ -277,7 +277,25 @@ fn simple_arithmetic() {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(17));
                 }
-                _ => panic!("expected number"),
+                _ => panic!("expected a number"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn logical_operations() {
+    let res = run(String::from("main = xor False True"));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Data(2, vec![]));
+                }
+                _ => panic!("expected a Data Node"),
             }
         }
         _ => panic!("expected to be evaluated"),

@@ -1,3 +1,4 @@
+use crate::compiler::primitives::Primitive;
 use crate::compiler::Node;
 use crate::lang::{CoreExpr, Name};
 use std::collections::VecDeque;
@@ -126,7 +127,10 @@ impl Heap<Node> {
                 .map(|(_, addr)| *addr)
                 .ok_or(HeapError::UndefinedName(v)),
             CoreExpr::Num(n) => Ok(self.alloc(Node::Num(n))),
-            CoreExpr::Constr { .. } => Err(HeapError::NotInstantiable),
+            CoreExpr::Constr { tag, arity } => Ok(self.alloc(Node::Prim(
+                String::from("Pack"),
+                Primitive::Constr(tag, arity),
+            ))),
             CoreExpr::Ap(e1, e2) => {
                 let a1 = self.instantiate(*e1, env)?;
                 let a2 = self.instantiate(*e2, env)?;
@@ -161,7 +165,10 @@ impl Heap<Node> {
                 self.update(root_addr, Node::Ind(a_addr))
             }
             CoreExpr::Num(n) => self.update(root_addr, Node::Num(n)),
-            CoreExpr::Constr { .. } => Err(HeapError::NotInstantiable),
+            CoreExpr::Constr { tag, arity } => self.update(
+                root_addr,
+                Node::Prim(String::from("Pack"), Primitive::Constr(tag, arity)),
+            ),
             CoreExpr::Ap(e1, e2) => {
                 let a1 = self.instantiate(*e1, env)?;
                 let a2 = self.instantiate(*e2, env)?;

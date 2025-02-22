@@ -40,6 +40,10 @@ fn run(s: String) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>, Synt
 }
 
 fn main() {
-    let program = String::from(r#"main = 4*5+(2-5)"#);
+    let program = String::from(
+        r#"
+        main = xor False True
+    "#,
+    );
     println!("{:?}", run(program));
 }
