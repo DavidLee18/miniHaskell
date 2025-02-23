@@ -42,7 +42,7 @@ fn run(s: String) -> Result<Vec<Result<(Vec<Node>, TiStats), ResultError>>, Synt
 fn main() {
     let program = String::from(
         r#"
-            main = fst (snd (fst (Pair (Pair 1 (Pair 2 3)) 4)))
+            main = head (tail (tail (Cons 3 (Cons 2 (Cons 1 Nil)))))
         "#,
     );
     println!("{:?}", run(program));

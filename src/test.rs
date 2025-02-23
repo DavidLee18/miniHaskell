@@ -380,3 +380,47 @@ fn fibonacci() {
         _ => panic!("expected to be evaluated"),
     }
 }
+
+#[test]
+fn pair() {
+    let res = run(String::from(
+        r#"
+            main = fst (snd (fst (Pair (Pair 1 (Pair 2 3)) 4)))
+        "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(2));
+                }
+                _ => panic!("expected to be evaluated"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn head_and_tail() {
+    let res = run(String::from(
+        r#"
+            main = head (tail (tail (Cons 3 (Cons 2 (Cons 1 Nil)))))
+        "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Ok((ns, _)) => {
+                    assert_eq!(ns.len(), 1);
+                    assert_eq!(ns[0], Node::Num(1));
+                }
+                _ => panic!("expected to be evaluated"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}

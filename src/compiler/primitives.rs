@@ -15,7 +15,9 @@ pub enum Primitive {
     LessEq,
     Eq,
     NotEq,
-    CasePair
+    CasePair,
+    CaseList,
+    Abort,
 }
 
 impl Primitive {
@@ -53,7 +55,7 @@ impl Primitive {
     }
 }
 
-pub const PRIMITIVES: [(&'static str, Primitive); 13] = [
+pub const PRIMITIVES: [(&'static str, Primitive); 15] = [
     ("negate", Primitive::Neg),
     ("+", Primitive::Add),
     ("-", Primitive::Sub),
@@ -66,5 +68,7 @@ pub const PRIMITIVES: [(&'static str, Primitive); 13] = [
     ("<=", Primitive::LessEq),
     ("==", Primitive::Eq),
     ("~=", Primitive::NotEq),
-    ("casePair", Primitive::CasePair)
+    ("casePair", Primitive::CasePair),
+    ("caseList", Primitive::CaseList),
+    ("abort", Primitive::Abort),
 ];
