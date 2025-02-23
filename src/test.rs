@@ -105,7 +105,7 @@ fn i3() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
@@ -123,7 +123,7 @@ fn skk3() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
@@ -141,7 +141,7 @@ fn id_skk3() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
@@ -159,7 +159,7 @@ fn twice3_id_skk3() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
@@ -177,7 +177,7 @@ fn let_iii2() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
@@ -197,7 +197,7 @@ fn nested_let() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(4));
                 }
@@ -215,7 +215,7 @@ fn letrec() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(4));
                 }
@@ -233,7 +233,7 @@ fn negate() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(-3));
                 }
@@ -251,7 +251,7 @@ fn negate_ind() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(-3));
                 }
@@ -273,7 +273,7 @@ fn simple_arithmetic() {
                 _ => panic!("expected to fail"),
             }
             match &v[1] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(17));
                 }
@@ -291,7 +291,7 @@ fn logical_operations() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Data(2, vec![]));
                 }
@@ -318,7 +318,7 @@ fn factorial() {
                 _ => panic!("expected to fail"),
             }
             match &v[1] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(120));
                 }
@@ -341,7 +341,7 @@ fn gcd() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(2));
                 }
@@ -370,7 +370,7 @@ fn fibonacci() {
                 }
             }
             match &v[3] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(3));
                 }
@@ -392,7 +392,7 @@ fn pair() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(2));
                 }
@@ -414,9 +414,121 @@ fn head_and_tail() {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
-                Ok((ns, _)) => {
+                Ok((_, ns, _)) => {
                     assert_eq!(ns.len(), 1);
                     assert_eq!(ns[0], Node::Num(1));
+                }
+                _ => panic!("expected to be evaluated"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn list() {
+    let res = run(String::from(
+        r#"
+            downfrom n = if (n == 0) Nil (Cons n (downfrom (n-1)));
+            main = printList (downfrom 4)
+        "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 2);
+            match &v[0] {
+                Err(ResultError::Eval(EvalError::NumAp)) => (),
+                _ => panic!("expected to fail"),
+            }
+            match &v[1] {
+                Ok((output, ns, _)) => {
+                    assert!(ns.is_empty());
+                    assert_eq!(output.len(), 4);
+                    assert_eq!(output[0], 4);
+                    assert_eq!(output[1], 3);
+                    assert_eq!(output[2], 2);
+                    assert_eq!(output[3], 1);
+                }
+                _ => panic!("expected to be evaluated"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn three_primes() {
+    let res = run(String::from(
+        r#"
+            main = printList (take 3 (sieve (from 2)));
+            from n = Cons n (from (n+1));
+            sieve xs = caseList xs Nil sieveCons;
+            sieveCons p ps = Cons p (sieve (filter (nonMultiple p) ps));
+            filter p xs = caseList xs Nil (filterCons p);
+            filterCons p x xs = let rest = filter p xs
+                                in if (p x) (Cons x rest) rest;
+            nonMultiple p n = ((n/p)*p) ~= n;
+            take n xs = if (n == 0) Nil (caseList xs Nil (takeCons n));
+            takeCons n x xs = Cons x (take (n-1) xs);
+        "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 2);
+            match &v[0] {
+                Err(ResultError::Eval(EvalError::NumAp)) => (),
+                _ => panic!("expected to fail"),
+            }
+            match &v[1] {
+                Ok((output, ns, _)) => {
+                    assert!(ns.is_empty());
+                    assert_eq!(output.len(), 3);
+                    assert_eq!(output[0], 2);
+                    assert_eq!(output[1], 3);
+                    assert_eq!(output[2], 5);
+                }
+                _ => panic!("expected to be evaluated"),
+            }
+        }
+        _ => panic!("expected to be evaluated"),
+    }
+}
+
+#[test]
+fn ten_fibonaccis() {
+    let res = run(String::from(
+        r#"
+            main = printList (take 10 fibs);
+            fibs = Cons 0 (Cons 1 (zipWith add fibs (tail fibs)));
+            add a b = a + b;
+            zipWith f xs ys = caseList xs Nil (zipWith_ f ys);
+            zipWith_ f ys x xs = caseList ys Nil (zipWith__ f x xs);
+            zipWith__ f x xs y ys = Cons (f x y) (zipWith f xs ys);
+            take n xs = if (n == 0) Nil (caseList xs Nil (takeCons n));
+            takeCons n x xs = Cons x (take (n-1) xs);
+        "#,
+    ));
+    match res {
+        Ok(v) => {
+            assert_eq!(v.len(), 2);
+            match &v[0] {
+                Err(ResultError::Eval(EvalError::NumAp)) => (),
+                _ => panic!("expected to fail"),
+            }
+            match &v[1] {
+                Ok((output, ns, _)) => {
+                    assert!(ns.is_empty());
+                    assert_eq!(output.len(), 10);
+                    assert_eq!(output[0], 0);
+                    assert_eq!(output[1], 1);
+                    assert_eq!(output[2], 1);
+                    assert_eq!(output[3], 2);
+                    assert_eq!(output[4], 3);
+                    assert_eq!(output[5], 5);
+                    assert_eq!(output[6], 8);
+                    assert_eq!(output[7], 13);
+                    assert_eq!(output[8], 21);
+                    assert_eq!(output[9], 34);
                 }
                 _ => panic!("expected to be evaluated"),
             }

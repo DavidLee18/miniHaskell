@@ -6,12 +6,14 @@ use std::cmp::max;
 
 pub mod primitives;
 
-type TiState = (TiStack, TiDump, TiHeap, TiGlobals, TiStats);
+type TiState = (TiOutput, TiStack, TiDump, TiHeap, TiGlobals, TiStats);
 
 type TiStack = Vec<Addr>;
 type TiDump = Vec<TiStack>;
 
 type TiHeap = Heap<Node>;
+
+type TiOutput = Vec<i64>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
@@ -32,12 +34,14 @@ impl Node {
     }
     pub fn is_data_node(&self) -> bool {
         match self {
-            Node::Num(_) => true,
-            Node::Data(_, _) => true,
+            Self::Num(_) => true,
+            Self::Data(_, _) => true,
+            Self::Prim(_, Primitive::Stop) => true,
             _ => false,
         }
     }
 }
+
 type TiGlobals = ASSOC<lang::Name, Addr>;
 
 #[derive(Debug, Default, Clone)]
@@ -78,6 +82,7 @@ pub(crate) fn compile(p: lang::CoreProgram) -> Result<TiState, CompileError> {
     let main_addr = lookup(&globals, &String::from("main")).ok_or(CompileError::NoMain)?;
     let alloc_count = init_heap.alloc_count();
     Ok((
+        vec![],
         vec![*main_addr],
         vec![],
         init_heap,
@@ -108,6 +113,8 @@ const EXTRA_PRELUDE_DEFS: &'static str = r#"
     Cons = Pack{2, 2};
     head l = caseList l abort K;
     tail l = caseList l abort K1;
+    printList xs = caseList xs stop printList_;
+    printList_ x xs = print x (printList xs);
     "#;
 
 fn build_init_heap(sc_defs: Vec<lang::CoreScDefn>) -> (TiHeap, TiGlobals) {
@@ -149,19 +156,8 @@ pub(crate) fn eval(state: TiState) -> Result<Vec<TiState>, EvalError> {
     Ok(res)
 }
 
-macro_rules! restore_dump {
-    ($stack: expr, $dump: expr, $e: expr) => {
-        if $stack.len() != 1 {
-            Err($e)
-        } else {
-            *$stack = $dump.pop().ok_or(EvalError::EmptyDump)?;
-            Ok(())
-        }
-    };
-}
-
 fn step(state: &mut TiState) -> Result<(), EvalError> {
-    let (stack, dump, heap, _, _) = state;
+    let (_, stack, dump, heap, _, _) = state;
     // println!("Stack: {:?}", stack);
     // println!("Dump: {:?}", dump);
     // println!("{:?}", heap);
@@ -182,7 +178,14 @@ fn step(state: &mut TiState) -> Result<(), EvalError> {
             let (args, body) = (args.clone(), body.clone());
             sc_step(state, last_stack, args, body)
         }
-        Node::Num(_) => restore_dump!(stack, dump, EvalError::NumAp),
+        Node::Num(_) => {
+            if stack.len() != 1 {
+                Err(EvalError::NumAp)
+            } else {
+                *stack = dump.pop().ok_or(EvalError::EmptyDump)?;
+                Ok(())
+            }
+        }
         Node::Ind(r) => {
             stack.pop().ok_or(EvalError::EmptyStack)?;
             stack.push(*r);
@@ -192,7 +195,14 @@ fn step(state: &mut TiState) -> Result<(), EvalError> {
             let p = p.clone();
             prim_step(state, p)
         }
-        Node::Data(_, _) => restore_dump!(stack, dump, EvalError::DataAp),
+        Node::Data(_, _) => {
+            if stack.len() != 1 {
+                Err(EvalError::DataAp)
+            } else {
+                *stack = dump.pop().ok_or(EvalError::EmptyDump)?;
+                Ok(())
+            }
+        }
     }
 }
 
@@ -212,9 +222,10 @@ fn unwrap_data<'a>(
 }
 
 fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
-    let (stack, dump, heap, _, _) = state;
+    let (output, stack, dump, heap, _, _) = state;
     let args_len = match &prim {
         Primitive::Abort => return Err(EvalError::AbortSig),
+        Primitive::Stop => return Err(EvalError::TypeMismatch),
         Primitive::Neg => 1,
         Primitive::Constr(_, n) => *n as usize,
         Primitive::If | Primitive::CaseList => 3,
@@ -228,7 +239,8 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
         | Primitive::Sub
         | Primitive::Mul
         | Primitive::Div
-        | Primitive::CasePair => 2,
+        | Primitive::CasePair
+        | Primitive::Print => 2,
     };
     if stack.len() != args_len + 1 {
         Err(EvalError::ArgsLengthMismatch {
@@ -370,6 +382,7 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                             let nil = args[1];
                             stack.pop().ok_or(EvalError::EmptyStack)?;
                             stack.pop().ok_or(EvalError::EmptyStack)?;
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
                             heap.update(*stack.last().ok_or(EvalError::EmptyStack)?, Node::Ind(nil))
                                 .map_err(EvalError::Heap)
                         } else if *t == 2 && args_.len() == 2 {
@@ -393,6 +406,27 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                 }
             }
             Primitive::Abort => unreachable!(),
+            Primitive::Stop => unreachable!(),
+            Primitive::Print => {
+                let arg1 = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                match arg1 {
+                    Node::Num(n) => {
+                        output.push(*n);
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        stack.push(args[1]);
+                        Ok(())
+                    }
+                    _ => {
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        dump.push(stack.clone());
+                        *stack = vec![args[0]];
+                        Ok(())
+                    }
+                }
+            }
         }
     }
 }
@@ -403,7 +437,7 @@ fn sc_step(
     arg_names: Vec<lang::Name>,
     body: lang::CoreExpr,
 ) -> Result<(), EvalError> {
-    let (stack, _, heap, globals, stat) = state;
+    let (_, stack, _, heap, globals, stat) = state;
     let arg_names_len = arg_names.len();
     let arg_bindings = arg_names
         .into_iter()
@@ -436,7 +470,7 @@ fn sc_step(
 }
 
 fn ti_final(state: &TiState) -> Result<bool, EvalError> {
-    let (stack, dump, heap, _, _) = state;
+    let (_, stack, dump, heap, _, _) = state;
     if !dump.is_empty() {
         Ok(false)
     } else {
@@ -452,20 +486,27 @@ fn ti_final(state: &TiState) -> Result<bool, EvalError> {
 }
 
 fn do_admin(state: &mut TiState) {
-    let (stack, _, heap, _, stat) = state;
+    let (_, stack, _, heap, _, stat) = state;
     stat.heap_alloc_count = heap.alloc_count();
     stat.max_stack_size = max(stat.max_stack_size, stack.len());
 }
 
-pub(crate) fn show_results(states: Vec<TiState>) -> Result<(Vec<Node>, TiStats), ResultError> {
+pub(crate) fn show_results(
+    states: Vec<TiState>,
+) -> Result<(Vec<i64>, Vec<Node>, TiStats), ResultError> {
     let last_state = states.last().ok_or(ResultError::NoState)?;
-    let nodes = get_stack_results(last_state)?;
-    let (_, _, _, _, stat) = last_state;
-    Ok((nodes, stat.clone()))
+    let mut nodes = get_stack_results(last_state)?;
+    if nodes.len() == 1 {
+        if let Node::Prim(_, Primitive::Stop) = nodes[0] {
+            nodes.remove(0);
+        }
+    }
+    let (output, _, _, _, _, stat) = last_state;
+    Ok((output.clone(), nodes, stat.clone()))
 }
 
 pub(crate) fn get_stack_results(state: &TiState) -> Result<Vec<Node>, ResultError> {
-    let (stack, _, heap, _, _) = state;
+    let (_, stack, _, heap, _, _) = state;
     Ok(stack
         .iter()
         .map(|addr| {

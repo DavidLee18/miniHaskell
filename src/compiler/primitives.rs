@@ -18,6 +18,8 @@ pub enum Primitive {
     CasePair,
     CaseList,
     Abort,
+    Print,
+    Stop,
 }
 
 impl Primitive {
@@ -55,7 +57,7 @@ impl Primitive {
     }
 }
 
-pub const PRIMITIVES: [(&'static str, Primitive); 15] = [
+pub const PRIMITIVES: [(&'static str, Primitive); 17] = [
     ("negate", Primitive::Neg),
     ("+", Primitive::Add),
     ("-", Primitive::Sub),
@@ -71,4 +73,6 @@ pub const PRIMITIVES: [(&'static str, Primitive); 15] = [
     ("casePair", Primitive::CasePair),
     ("caseList", Primitive::CaseList),
     ("abort", Primitive::Abort),
+    ("print", Primitive::Print),
+    ("stop", Primitive::Stop),
 ];
