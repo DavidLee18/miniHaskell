@@ -100,6 +100,9 @@ const EXTRA_PRELUDE_DEFS: &'static str = r#"
     or x y = if x True y;
     xor x y = and (or x y) (not (and x y));
     not x = if x False True;
+    Pair = Pack{1, 2};
+    fst p = casePair p K;
+    snd p = casePair p K1;
     "#;
 
 fn build_init_heap(sc_defs: Vec<lang::CoreScDefn>) -> (TiHeap, TiGlobals) {
@@ -141,6 +144,17 @@ pub(crate) fn eval(state: TiState) -> Result<Vec<TiState>, EvalError> {
     Ok(res)
 }
 
+macro_rules! restore_dump {
+    ($stack: expr, $dump: expr, $e: expr) => {
+        if $stack.len() != 1 {
+            Err($e)
+        } else {
+            *$stack = $dump.pop().ok_or(EvalError::EmptyDump)?;
+            Ok(())
+        }
+    };
+}
+
 fn step(state: &mut TiState) -> Result<(), EvalError> {
     let (stack, dump, heap, _, _) = state;
     // println!("Stack: {:?}", stack);
@@ -163,14 +177,7 @@ fn step(state: &mut TiState) -> Result<(), EvalError> {
             let (args, body) = (args.clone(), body.clone());
             sc_step(state, last_stack, args, body)
         }
-        Node::Num(_) => {
-            if stack.len() != 1 {
-                Err(EvalError::NumAp)
-            } else {
-                *stack = dump.pop().ok_or(EvalError::EmptyDump)?;
-                Ok(())
-            }
-        }
+        Node::Num(_) => restore_dump!(stack, dump, EvalError::NumAp),
         Node::Ind(r) => {
             stack.pop().ok_or(EvalError::EmptyStack)?;
             stack.push(*r);
@@ -180,15 +187,23 @@ fn step(state: &mut TiState) -> Result<(), EvalError> {
             let p = p.clone();
             prim_step(state, p)
         }
-        Node::Data(_, _) => {
-            if stack.len() != 1 {
-                Err(EvalError::DataAp)
-            } else {
-                *stack = dump.pop().ok_or(EvalError::EmptyDump)?;
-                Ok(())
-            }
-        }
+        Node::Data(_, _) => restore_dump!(stack, dump, EvalError::DataAp),
     }
+}
+
+fn unwrap_data<'a>(
+    s: &mut TiStack,
+    d: &mut TiDump,
+    new_stack: Vec<Addr>,
+    n: &'a Node,
+) -> Result<Option<(&'a u32, &'a Vec<Addr>)>, EvalError> {
+    let Node::Data(t, args_) = n else {
+        s.pop().ok_or(EvalError::EmptyStack)?;
+        d.push(s.clone());
+        *s = new_stack;
+        return Ok(None);
+    };
+    Ok(Some((t, args_)))
 }
 
 fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
@@ -197,7 +212,17 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
         Primitive::Neg => 1,
         Primitive::Constr(_, n) => *n as usize,
         Primitive::If => 3,
-        _ => 2,
+        Primitive::Eq
+        | Primitive::NotEq
+        | Primitive::Greater
+        | Primitive::GreaterEq
+        | Primitive::Less
+        | Primitive::LessEq
+        | Primitive::Add
+        | Primitive::Sub
+        | Primitive::Mul
+        | Primitive::Div
+        | Primitive::CasePair => 2,
     };
     if stack.len() != args_len + 1 {
         Err(EvalError::ArgsLengthMismatch {
@@ -235,30 +260,38 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
             }
             Primitive::If => {
                 let cond = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                let Node::Data(t, args_) = cond else {
-                    stack.pop().ok_or(EvalError::EmptyStack)?;
-                    dump.push(stack.clone());
-                    *stack = vec![args[0]];
-                    return Ok(());
-                };
-                if !args_.is_empty() {
-                    return Err(EvalError::TypeMismatch);
-                }
-                match t {
-                    1 | 2 => {
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        heap.update(
-                            *stack.last().ok_or(EvalError::EmptyStack)?,
-                            Node::Ind(args[args_len - *t as usize]),
-                        )
-                            .map_err(EvalError::Heap)
+                match unwrap_data(stack, dump, vec![args[0]], cond)? {
+                    Some((t, args_)) => {
+                        if !args_.is_empty() {
+                            return Err(EvalError::TypeMismatch);
+                        }
+                        match t {
+                            1 | 2 => {
+                                stack.pop().ok_or(EvalError::EmptyStack)?;
+                                stack.pop().ok_or(EvalError::EmptyStack)?;
+                                stack.pop().ok_or(EvalError::EmptyStack)?;
+                                heap.update(
+                                    *stack.last().ok_or(EvalError::EmptyStack)?,
+                                    Node::Ind(args[args_len - *t as usize]),
+                                )
+                                    .map_err(EvalError::Heap)
+                            }
+                            _ => Err(EvalError::TypeMismatch),
+                        }
                     }
-                    _ => Err(EvalError::TypeMismatch),
+                    None => Ok(()),
                 }
             }
-            _ => {
+            Primitive::Add
+            | Primitive::Sub
+            | Primitive::Mul
+            | Primitive::Div
+            | Primitive::Greater
+            | Primitive::GreaterEq
+            | Primitive::Less
+            | Primitive::LessEq
+            | Primitive::Eq
+            | Primitive::NotEq => {
                 let arg1 = heap.lookup(args[0]).map_err(EvalError::Heap)?;
                 let arg2 = heap.lookup(args[1]).map_err(EvalError::Heap)?;
                 let res = match (arg1, arg2) {
@@ -300,6 +333,28 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                 stack.pop().ok_or(EvalError::EmptyStack)?;
                 heap.update(*stack.last().unwrap(), res)
                     .map_err(EvalError::Heap)
+            }
+            Primitive::CasePair => {
+                let pair = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                match unwrap_data(stack, dump, vec![args[0]], pair)? {
+                    Some((t, args_)) => {
+                        if *t != 1 || args_.len() != 2 {
+                            return Err(EvalError::TypeMismatch);
+                        }
+                        let f_addr = args[1];
+                        let fst = args_[0];
+                        let snd = args_[1];
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
+                        let f_a = heap.alloc(Node::Ap(f_addr, fst));
+                        heap.update(
+                            *stack.last().ok_or(EvalError::EmptyStack)?,
+                            Node::Ap(f_a, snd),
+                        )
+                            .map_err(EvalError::Heap)
+                    }
+                    None => Ok(()),
+                }
             }
         }
     }
