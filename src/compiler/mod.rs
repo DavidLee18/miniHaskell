@@ -174,6 +174,9 @@ pub(crate) fn allocate_sc(heap: &mut TiHeap, sc_def: lang::CoreScDefn) -> (lang:
 pub(crate) fn eval(state: TiState) -> Result<Vec<TiState>, EvalError> {
     let mut res = vec![];
     let mut temp = state;
+    res.push(temp.clone());
+    step(&mut temp)?;
+    do_admin(&mut temp);
     while !ti_final(&temp)? {
         res.push(temp.clone());
         step(&mut temp)?;

@@ -29,6 +29,22 @@ impl<A> Expr<A> {
             _ => false,
         }
     }
+
+    pub fn get_var_mut(&mut self, var_name: &str) -> Option<&mut Expr<A>> {
+        match self {
+            Expr::Var(n) => {
+                if n == var_name {
+                    Some(self)
+                } else {
+                    None
+                }
+            }
+            Expr::Ap(left, right) => left
+                .get_var_mut(var_name)
+                .or_else(|| right.get_var_mut(var_name)),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) type Name = String;
