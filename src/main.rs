@@ -126,6 +126,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        for p_name in PRELUDE_NAMES {
+            if state.4.iter().any(|(n, _)| n == p_name) {
+                continue;
+            } else {
+                let (addr, _) = state
+                    .3
+                    .iter()
+                    .find(|(_, n)| match n {
+                        Node::SuperComb(n_, _, _) => n_ == p_name,
+                        _ => false,
+                    })
+                    .expect("prelude not found");
+                state.4.push_back((String::from(p_name), *addr));
+            }
+        }
         let mut sc_def = match lang::parser::sc()(tokens.clone()) {
             v => {
                 let mut ress = v
@@ -425,3 +440,27 @@ fn allocate_expr_using_prev_it(
         CoreExpr::Lam(_, _) => Err(HeapError::NotInstantiable),
     }
 }
+
+const PRELUDE_NAMES: [&'static str; 21] = [
+    "I",
+    "K",
+    "K1",
+    "S",
+    "compose",
+    "twice",
+    "False",
+    "True",
+    "and",
+    "or",
+    "not",
+    "xor",
+    "Pair",
+    "fst",
+    "snd",
+    "Nil",
+    "Cons",
+    "head",
+    "tail",
+    "printList",
+    "printList_",
+];

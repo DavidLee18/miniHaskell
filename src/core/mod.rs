@@ -92,6 +92,10 @@ impl<A> Heap<A> {
             .map(|(_, v)| v)
             .ok_or(HeapError::NotFound)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item=&(usize, A)> {
+        self.cts.iter()
+    }
 }
 
 impl Heap<Node> {
