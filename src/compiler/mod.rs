@@ -242,13 +242,19 @@ fn unwrap_data<'a>(
     new_stack: Vec<Addr>,
     n: &'a Node,
 ) -> Result<Option<(&'a u32, &'a Vec<Addr>)>, EvalError> {
-    let Node::Data(t, args_) = n else {
-        s.pop().ok_or(EvalError::EmptyStack)?;
-        d.push(s.clone());
-        *s = new_stack;
-        return Ok(None);
-    };
-    Ok(Some((t, args_)))
+    match n {
+        Node::Data(t, args_) => Ok(Some((t, args_))),
+        Node::Ind(_)
+        | Node::Ap(_, _)
+        | Node::SuperComb(_, _, _)
+        | Node::Prim(_, Primitive::Constr(_, _)) => {
+            s.pop().ok_or(EvalError::EmptyStack)?;
+            d.push(s.clone());
+            *s = new_stack;
+            Ok(None)
+        }
+        _ => Err(EvalError::TypeMismatch),
+    }
 }
 
 fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {

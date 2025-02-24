@@ -96,6 +96,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Globals: {:?}", state.4);
             println!("Stats: {:?}", state.5);
             continue;
+        } else if input == ":clear" {
+            println!("{}", termion::clear::All);
+            continue;
         }
         let tokens = lang::clex(input);
         match compiler::lookup(&state.4, &String::from("it")) {
