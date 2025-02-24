@@ -144,33 +144,6 @@ enum PartialExpr {
     FoundOp(Name, CoreExpr),
 }
 
-type MultState = (u32, u32, u32, u32);
-
-pub(crate) fn eval_mult(m: MultState) -> Vec<MultState> {
-    let mut res = vec![];
-    let mut temp = m;
-    while !mult_final(temp) {
-        res.push(temp);
-        temp = step_mult(temp);
-    }
-    res.push(temp);
-    res
-}
-
-fn step_mult(m: MultState) -> MultState {
-    let (n, m, d, t) = m;
-    if d > 0 {
-        (n, m, d - 1, t + 1)
-    } else {
-        (n, m - 1, n, t)
-    }
-}
-
-fn mult_final(m: MultState) -> bool {
-    let (_, m, d, _) = m;
-    m == 0 && d == 0
-}
-
 pub fn parse(p: PathBuf) -> Result<Vec<CoreProgram>, SyntaxError> {
     let s = read_to_string(p).expect("Failed to read file");
     syntax(clex(s))
@@ -183,3 +156,11 @@ pub fn parse_raw(s: String) -> Result<Vec<CoreProgram>, SyntaxError> {
 
 #[derive(Debug)]
 pub struct SyntaxError;
+
+impl std::fmt::Display for SyntaxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Syntax error")
+    }
+}
+
+impl std::error::Error for SyntaxError {}

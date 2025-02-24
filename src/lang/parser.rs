@@ -18,36 +18,8 @@ fn var() -> Parser<String> {
     })
 }
 
-fn hello_or_goodbye() -> Parser<String> {
-    alt(
-        || lit(String::from("hello")),
-        || lit(String::from("goodbye")),
-    )
-}
-
-pub(crate) fn greeting() -> Parser<(String, String)> {
-    then3(
-        move |hg, name, _| (hg, name),
-        hello_or_goodbye,
-        var,
-        || lit(String::from("!")),
-    )
-}
-
 pub(crate) fn empty<A: 'static + Clone>(a: A) -> Parser<A> {
     Box::new(move |toks| vec![(a.clone(), toks)])
-}
-
-pub(crate) fn greetings() -> Parser<Vec<(String, String)>> {
-    one_or_more(greeting)
-}
-
-pub(crate) fn greetings_n() -> Parser<usize> {
-    apply(|| zero_or_more(greeting), |v| v.len())
-}
-
-pub(crate) fn greetings_with_comma() -> Parser<Vec<(String, String)>> {
-    one_or_more_with_sep(greeting, || lit(String::from(",")))
 }
 
 fn sat<F: Fn(String) -> bool + 'static>(f: F) -> Parser<String> {
@@ -75,7 +47,7 @@ pub fn program() -> Parser<CoreProgram> {
     one_or_more_with_sep(sc, || lit(String::from(";")))
 }
 
-fn sc() -> Parser<CoreScDefn> {
+pub(crate) fn sc() -> Parser<CoreScDefn> {
     then4(
         |n, ns, _, e| (n, ns, e),
         var,
@@ -271,7 +243,7 @@ fn lambda() -> Parser<CoreExpr> {
     )
 }
 
-fn expr() -> Parser<CoreExpr> {
+pub(crate) fn expr() -> Parser<CoreExpr> {
     alt(let_in, || alt(case_of, || alt(lambda, expr1)))
 }
 

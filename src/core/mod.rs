@@ -2,6 +2,8 @@ use crate::compiler::primitives::Primitive;
 use crate::compiler::Node;
 use crate::lang::{CoreExpr, Name};
 use std::collections::VecDeque;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(crate) struct Heap<A> {
@@ -207,3 +209,19 @@ pub enum HeapError {
     NotInstantiable,
     UndefinedName(String),
 }
+
+impl Display for HeapError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HeapError::NotFound => write!(f, "item not found on the heap"),
+            HeapError::NotAp => write!(f, "not an Ap node"),
+            HeapError::ArgsLengthMismatch { expected, actual } => {
+                write!(f, "expected {} arguments, got {}", expected, actual)
+            }
+            HeapError::NotInstantiable => write!(f, "the expression is not instantiable"),
+            HeapError::UndefinedName(name) => write!(f, "undefined name '{}'", name),
+        }
+    }
+}
+
+impl Error for HeapError {}

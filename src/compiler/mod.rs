@@ -46,9 +46,9 @@ type TiGlobals = ASSOC<lang::Name, Addr>;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TiStats {
-    reductions: usize,
-    max_stack_size: usize,
-    heap_alloc_count: usize,
+    pub(crate) reductions: usize,
+    pub(crate) max_stack_size: usize,
+    pub(crate) heap_alloc_count: usize,
 }
 
 #[derive(Debug)]
@@ -56,6 +56,17 @@ pub enum CompileError {
     NoMain,
     Syntax(SyntaxError),
 }
+
+impl std::fmt::Display for CompileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            CompileError::NoMain => write!(f, "No main function"),
+            CompileError::Syntax(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl std::error::Error for CompileError {}
 
 #[derive(Debug)]
 pub enum EvalError {
@@ -68,6 +79,25 @@ pub enum EvalError {
     DataAp,
     AbortSig,
 }
+
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            EvalError::EmptyStack => write!(f, "Empty stack"),
+            EvalError::Heap(h) => write!(f, "{}", h),
+            EvalError::EmptyDump => write!(f, "Empty dump"),
+            EvalError::NumAp => write!(f, "tried to apply a number to something"),
+            EvalError::ArgsLengthMismatch { expected, actual } => {
+                write!(f, "expected {} arguments, got {}", expected, actual)
+            }
+            EvalError::TypeMismatch => write!(f, "type mismatch"),
+            EvalError::DataAp => write!(f, "tried to apply a data to something"),
+            EvalError::AbortSig => write!(f, "aborting"),
+        }
+    }
+}
+
+impl std::error::Error for EvalError {}
 
 pub(crate) fn compile(p: lang::CoreProgram) -> Result<TiState, CompileError> {
     let sc_defs = vec![
@@ -95,11 +125,11 @@ pub(crate) fn compile(p: lang::CoreProgram) -> Result<TiState, CompileError> {
     ))
 }
 
-fn lookup<'a, A: PartialEq, B>(a: &'a ASSOC<A, B>, k: &A) -> Option<&'a B> {
+pub(crate) fn lookup<'a, A: PartialEq, B>(a: &'a ASSOC<A, B>, k: &A) -> Option<&'a B> {
     a.iter().find(|&(a, _)| *a == *k).map(|(_, b)| b)
 }
 
-const EXTRA_PRELUDE_DEFS: &'static str = r#"
+pub const EXTRA_PRELUDE_DEFS: &'static str = r#"
     False = Pack{1, 0};
     True = Pack{2, 0};
     and x y = if x y False;
@@ -117,7 +147,7 @@ const EXTRA_PRELUDE_DEFS: &'static str = r#"
     printList_ x xs = print x (printList xs);
     "#;
 
-fn build_init_heap(sc_defs: Vec<lang::CoreScDefn>) -> (TiHeap, TiGlobals) {
+pub(crate) fn build_init_heap(sc_defs: Vec<lang::CoreScDefn>) -> (TiHeap, TiGlobals) {
     let mut init_heap = Heap::new();
     let mut sc_addrs = map_accuml(allocate_sc, &mut init_heap, sc_defs);
     let mut prim_addrs = map_accuml(
@@ -135,8 +165,8 @@ fn allocate_prim(heap: &mut TiHeap, primitive: (&'static str, Primitive)) -> (la
     (lang::Name::from(name), addr)
 }
 
-fn allocate_sc(heap: &mut TiHeap, sc_defs: lang::CoreScDefn) -> (lang::Name, Addr) {
-    let (name, args, body) = sc_defs;
+pub(crate) fn allocate_sc(heap: &mut TiHeap, sc_def: lang::CoreScDefn) -> (lang::Name, Addr) {
+    let (name, args, body) = sc_def;
     let addr = heap.alloc(Node::SuperComb(name.clone(), args, body));
     (name, addr)
 }
@@ -144,9 +174,6 @@ fn allocate_sc(heap: &mut TiHeap, sc_defs: lang::CoreScDefn) -> (lang::Name, Add
 pub(crate) fn eval(state: TiState) -> Result<Vec<TiState>, EvalError> {
     let mut res = vec![];
     let mut temp = state;
-    res.push(temp.clone());
-    step(&mut temp)?;
-    do_admin(&mut temp);
     while !ti_final(&temp)? {
         res.push(temp.clone());
         step(&mut temp)?;
@@ -525,3 +552,17 @@ pub enum ResultError {
     Compile(CompileError),
     Eval(EvalError),
 }
+
+impl std::fmt::Display for ResultError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ResultError::NoState => write!(f, "no state"),
+            ResultError::Heap(h) => write!(f, "{}", h),
+            ResultError::Syntax(s) => write!(f, "{}", s),
+            ResultError::Compile(c) => write!(f, "{}", c),
+            ResultError::Eval(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for ResultError {}

@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+#either = "1.13.0"
+signal-hook = "0.3.17"
+termion = "4.0.3"
+text-to-ascii-art = "0.1.10"
 
 [dev-dependencies]
-#either = "1.13.0"
-#quickcheck = "1.0.3"
-#quickcheck_macros = "1.0.0"
