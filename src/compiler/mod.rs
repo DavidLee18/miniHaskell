@@ -105,9 +105,9 @@ pub(crate) fn compile(p: lang::CoreProgram) -> Result<TiState, CompileError> {
         lang::parse_raw(String::from(lang::PRELUDE_DEFS)).map_err(CompileError::Syntax)?[0].clone(),
         lang::parse_raw(String::from(EXTRA_PRELUDE_DEFS)).map_err(CompileError::Syntax)?[0].clone(),
     ]
-        .into_iter()
-        .flatten()
-        .collect();
+    .into_iter()
+    .flatten()
+    .collect();
     let (init_heap, globals) = build_init_heap(sc_defs);
     let main_addr = lookup(&globals, &String::from("main")).ok_or(CompileError::NoMain)?;
     let alloc_count = init_heap.alloc_count();
@@ -145,6 +145,14 @@ pub const EXTRA_PRELUDE_DEFS: &'static str = r#"
     tail l = caseList l abort K1;
     printList xs = caseList xs stop printList_;
     printList_ x xs = print x (printList xs);
+    zipWith f xs ys = caseList xs Nil (zipWith_ f ys);
+    zipWith_ f ys x xs = caseList ys Nil (zipWith__ f x xs);
+    zipWith__ f x xs y ys = Cons (f x y) (zipWith f xs ys);
+    take n xs = if (n == 0) Nil (caseList xs Nil (takeCons n));
+    takeCons n x xs = Cons x (take (n+(-1)) xs);
+    filter p xs = caseList xs Nil (filterCons p);
+    filterCons p x xs = let rest = filter p xs
+                        in if (p x) (Cons x rest) rest;
     "#;
 
 pub(crate) fn build_init_heap(sc_defs: Vec<lang::CoreScDefn>) -> (TiHeap, TiGlobals) {
@@ -310,7 +318,7 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                     *stack.last().ok_or(EvalError::EmptyStack)?,
                     Node::Data(*t, args),
                 )
-                    .map_err(EvalError::Heap)
+                .map_err(EvalError::Heap)
             }
             Primitive::If => {
                 let cond = heap.lookup(args[0]).map_err(EvalError::Heap)?;
@@ -328,7 +336,7 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                                     *stack.last().ok_or(EvalError::EmptyStack)?,
                                     Node::Ind(args[args_len - *t as usize]),
                                 )
-                                    .map_err(EvalError::Heap)
+                                .map_err(EvalError::Heap)
                             }
                             _ => Err(EvalError::TypeMismatch),
                         }
@@ -405,7 +413,7 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                             *stack.last().ok_or(EvalError::EmptyStack)?,
                             Node::Ap(f_a, snd),
                         )
-                            .map_err(EvalError::Heap)
+                        .map_err(EvalError::Heap)
                     }
                     None => Ok(()),
                 }
@@ -433,7 +441,7 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                                 *stack.last().ok_or(EvalError::EmptyStack)?,
                                 Node::Ap(f_h, tail),
                             )
-                                .map_err(EvalError::Heap)
+                            .map_err(EvalError::Heap)
                         } else {
                             Err(EvalError::TypeMismatch)
                         }

@@ -1,3 +1,4 @@
+use crate::lang::parser::Parser;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
@@ -141,17 +142,28 @@ pub(crate) fn clex(input: String) -> Vec<Token> {
 
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
 
-pub(crate) fn syntax(tokens: Vec<Token>) -> Result<Vec<CoreProgram>, SyntaxError> {
-    let ress = parser::program()(tokens)
-        .into_iter()
-        .filter(|(_, v)| v.is_empty())
-        .map(|(p, _)| p)
-        .collect::<Vec<_>>();
+pub(crate) fn parse_with<A>(parser: Parser<A>, tokens: Vec<Token>) -> Result<Vec<A>, SyntaxError> {
+    let ress = parser(tokens);
     if ress.is_empty() {
-        Err(SyntaxError)
+        Ok(vec![])
+    } else if ress.iter().any(|(p, v)| v.is_empty()) {
+        Ok(ress
+            .into_iter()
+            .filter(|(_, v)| v.is_empty())
+            .map(|(p, _)| p)
+            .collect())
     } else {
-        Ok(ress)
+        Err(SyntaxError(
+            ress.into_iter()
+                .find(|(_, v)| v.is_empty())
+                .map(|(_, mut v)| v.remove(0))
+                .unwrap(),
+        ))
     }
+}
+
+pub(crate) fn syntax(tokens: Vec<Token>) -> Result<Vec<CoreProgram>, SyntaxError> {
+    parse_with(parser::program(), tokens)
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +183,7 @@ pub fn parse_raw(s: String) -> Result<Vec<CoreProgram>, SyntaxError> {
 }
 
 #[derive(Debug)]
-pub struct SyntaxError;
+pub struct SyntaxError(pub Token);
 
 impl std::fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

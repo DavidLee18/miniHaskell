@@ -93,7 +93,7 @@ impl<A> Heap<A> {
             .ok_or(HeapError::NotFound)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&(usize, A)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(usize, A)> {
         self.cts.iter()
     }
 }

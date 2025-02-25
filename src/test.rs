@@ -464,22 +464,13 @@ fn three_primes() {
             from n = Cons n (from (n+1));
             sieve xs = caseList xs Nil sieveCons;
             sieveCons p ps = Cons p (sieve (filter (nonMultiple p) ps));
-            filter p xs = caseList xs Nil (filterCons p);
-            filterCons p x xs = let rest = filter p xs
-                                in if (p x) (Cons x rest) rest;
             nonMultiple p n = ((n/p)*p) ~= n;
-            take n xs = if (n == 0) Nil (caseList xs Nil (takeCons n));
-            takeCons n x xs = Cons x (take (n-1) xs);
         "#,
     ));
     match res {
         Ok(v) => {
-            assert_eq!(v.len(), 2);
+            assert_eq!(v.len(), 1);
             match &v[0] {
-                Err(ResultError::Eval(EvalError::NumAp)) => (),
-                _ => panic!("expected to fail"),
-            }
-            match &v[1] {
                 Ok((output, ns, _)) => {
                     assert!(ns.is_empty());
                     assert_eq!(output.len(), 3);
@@ -501,21 +492,12 @@ fn ten_fibonaccis() {
             main = printList (take 10 fibs);
             fibs = Cons 0 (Cons 1 (zipWith add fibs (tail fibs)));
             add a b = a + b;
-            zipWith f xs ys = caseList xs Nil (zipWith_ f ys);
-            zipWith_ f ys x xs = caseList ys Nil (zipWith__ f x xs);
-            zipWith__ f x xs y ys = Cons (f x y) (zipWith f xs ys);
-            take n xs = if (n == 0) Nil (caseList xs Nil (takeCons n));
-            takeCons n x xs = Cons x (take (n-1) xs);
         "#,
     ));
     match res {
         Ok(v) => {
-            assert_eq!(v.len(), 2);
+            assert_eq!(v.len(), 1);
             match &v[0] {
-                Err(ResultError::Eval(EvalError::NumAp)) => (),
-                _ => panic!("expected to fail"),
-            }
-            match &v[1] {
                 Ok((output, ns, _)) => {
                     assert!(ns.is_empty());
                     assert_eq!(output.len(), 10);
