@@ -33,13 +33,8 @@ impl<A> Expr<A> {
 
     pub fn get_var_mut(&mut self, var_name: &str) -> Option<&mut Expr<A>> {
         match self {
-            Expr::Var(n) => {
-                if n == var_name {
-                    Some(self)
-                } else {
-                    None
-                }
-            }
+            Expr::Var(n) if n == var_name => Some(self),
+            Expr::Var(_) => None,
             Expr::Ap(left, right) => left
                 .get_var_mut(var_name)
                 .or_else(|| right.get_var_mut(var_name)),
@@ -106,10 +101,8 @@ pub(crate) fn clex(input: String) -> Vec<Token> {
                     }
                 }
             }
-            c__ if c__.is_whitespace() => {
-                if c__ == '\n' {
-                    line += 1;
-                }
+            c__ if c__.is_whitespace() && c__ == '\n' => {
+                line += 1;
             }
             c__ if c__.is_digit(10) => {
                 let mut rest = chars
@@ -143,23 +136,11 @@ pub(crate) fn clex(input: String) -> Vec<Token> {
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
 
 pub(crate) fn parse_with<A>(parser: Parser<A>, tokens: Vec<Token>) -> Result<Vec<A>, SyntaxError> {
-    let ress = parser(tokens);
-    if ress.is_empty() {
-        Ok(vec![])
-    } else if ress.iter().any(|(p, v)| v.is_empty()) {
-        Ok(ress
-            .into_iter()
-            .filter(|(_, v)| v.is_empty())
-            .map(|(p, _)| p)
-            .collect())
-    } else {
-        Err(SyntaxError(
-            ress.into_iter()
-                .find(|(_, v)| v.is_empty())
-                .map(|(_, mut v)| v.remove(0))
-                .unwrap(),
-        ))
-    }
+    Ok(parser(tokens)
+        .into_iter()
+        .filter(|(_, v)| v.is_empty())
+        .map(|(p, _)| p)
+        .collect())
 }
 
 pub(crate) fn syntax(tokens: Vec<Token>) -> Result<Vec<CoreProgram>, SyntaxError> {

@@ -7,7 +7,7 @@ fn let_case() {
     let res = lang::syntax(lang::clex(String::from(
         "f = 3 ; g x y = let z = x in z ; h x = case (let y = x in y) of <1> -> 2 ; <2> -> 5",
     )))
-        .expect("expected to be parsed");
+    .expect("expected to be parsed");
 
     assert_eq!(res.len(), 1);
 
@@ -49,7 +49,7 @@ fn dangling_else() {
     let res = lang::syntax(lang::clex(String::from(
         "f x y = case x of <1> -> case y of <1> -> 1; <2> -> 2",
     )))
-        .expect("expected to be parsed");
+    .expect("expected to be parsed");
 
     assert_eq!(res.len(), 2);
 

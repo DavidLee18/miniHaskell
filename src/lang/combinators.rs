@@ -1,7 +1,7 @@
 use crate::lang::parser::{empty, Parser};
 use crate::lang::Token;
 
-pub(crate) fn alt<A, F: Fn() -> Parser<A> + 'static, F_: Fn() -> Parser<A> + 'static>(
+pub(crate) fn alt<A, F: FnOnce() -> Parser<A> + 'static, F_: FnOnce() -> Parser<A> + 'static>(
     a: F,
     b: F_,
 ) -> Parser<A> {
@@ -12,31 +12,39 @@ pub(crate) fn alt<A, F: Fn() -> Parser<A> + 'static, F_: Fn() -> Parser<A> + 'st
     })
 }
 
-pub(crate) fn apply<A, B, F: Fn(A) -> B + 'static, F2: Fn() -> Parser<A> + 'static>(
+#[macro_export]
+macro_rules! alt {
+    ($f:expr, $g:expr) => {
+        alt($f, $g)
+    };
+    ($f:expr, $g:expr$(, $h:expr)+) => {
+        alt($f, || { alt!($g$(, $h)+) })
+    }
+}
+
+pub(crate) fn apply<A, B, F: FnMut(A) -> B + 'static, F2: FnOnce() -> Parser<A> + 'static>(
     a: F2,
-    f: F,
+    mut f: F,
 ) -> Parser<B> {
     Box::new(move |toks| {
-        let res = a()(toks);
-        if res.is_empty() {
-            vec![]
-        } else {
-            res.into_iter().map(|(v, toks2)| (f(v), toks2)).collect()
-        }
+        a()(toks)
+            .into_iter()
+            .map(|(v, toks2)| (f(v), toks2))
+            .collect()
     })
 }
 
 pub(crate) fn then<
-    A: Clone,
+    A,
     B,
     C,
-    F: Fn(A, B) -> C + 'static,
-    F1: Fn() -> Parser<A> + 'static,
-    F2: Fn() -> Parser<B> + 'static,
+    F: FnMut(&A, B) -> C + 'static,
+    F1: FnOnce() -> Parser<A> + 'static,
+    F2: FnMut() -> Parser<B> + 'static,
 >(
-    comb: F,
+    mut comb: F,
     a: F1,
-    b: F2,
+    mut b: F2,
 ) -> Parser<C> {
     Box::new(move |toks| {
         let res1 = a()(toks);
@@ -50,7 +58,7 @@ pub(crate) fn then<
                         vec![]
                     } else {
                         res2.into_iter()
-                            .map(|(v2, toks2)| (comb(v1.clone(), v2), toks2))
+                            .map(|(v2, toks2)| (comb(&v1, v2), toks2))
                             .collect::<Vec<_>>()
                     }
                 })
@@ -61,19 +69,19 @@ pub(crate) fn then<
 }
 
 pub(crate) fn then3<
-    A: Clone,
-    B: Clone,
+    A,
+    B,
     C,
     D,
-    F: Fn(A, B, C) -> D + 'static,
-    FA: Fn() -> Parser<A> + 'static,
-    FB: Fn() -> Parser<B> + 'static,
-    FC: Fn() -> Parser<C> + 'static,
+    F: FnMut(&A, &B, C) -> D + 'static,
+    FA: FnOnce() -> Parser<A> + 'static,
+    FB: FnMut() -> Parser<B> + 'static,
+    FC: FnMut() -> Parser<C> + 'static,
 >(
-    comb: F,
+    mut comb: F,
     a: FA,
-    b: FB,
-    c: FC,
+    mut b: FB,
+    mut c: FC,
 ) -> Parser<D> {
     Box::new(move |toks| {
         let res1 = a()(toks);
@@ -93,9 +101,7 @@ pub(crate) fn then3<
                                     vec![]
                                 } else {
                                     res3.into_iter()
-                                        .map(|(v3, toks3)| {
-                                            (comb(v1.clone(), v2.clone(), v3), toks3)
-                                        })
+                                        .map(|(v3, toks3)| (comb(&v1, &v2, v3), toks3))
                                         .collect::<Vec<_>>()
                                 }
                             })
@@ -110,22 +116,22 @@ pub(crate) fn then3<
 }
 
 pub(crate) fn then4<
-    A: Clone,
-    B: Clone,
-    C: Clone,
+    A,
+    B,
+    C,
     D,
     E,
-    F: Fn(A, B, C, D) -> E + 'static,
-    FA: Fn() -> Parser<A> + 'static,
-    FB: Fn() -> Parser<B> + 'static,
-    FC: Fn() -> Parser<C> + 'static,
-    FD: Fn() -> Parser<D> + 'static,
+    F: FnMut(&A, &B, &C, D) -> E + 'static,
+    FA: FnOnce() -> Parser<A> + 'static,
+    FB: FnMut() -> Parser<B> + 'static,
+    FC: FnMut() -> Parser<C> + 'static,
+    FD: FnMut() -> Parser<D> + 'static,
 >(
-    comb: F,
+    mut comb: F,
     a: FA,
-    b: FB,
-    c: FC,
-    d: FD,
+    mut b: FB,
+    mut c: FC,
+    mut d: FD,
 ) -> Parser<E> {
     Box::new(move |toks| {
         let res1 = a()(toks);
@@ -152,15 +158,7 @@ pub(crate) fn then4<
                                             } else {
                                                 res4.into_iter()
                                                     .map(|(v4, toks4)| {
-                                                        (
-                                                            comb(
-                                                                v1.clone(),
-                                                                v2.clone(),
-                                                                v3.clone(),
-                                                                v4,
-                                                            ),
-                                                            toks4,
-                                                        )
+                                                        (comb(&v1, &v2, &v3, v4), toks4)
                                                     })
                                                     .collect::<Vec<_>>()
                                             }
@@ -180,28 +178,28 @@ pub(crate) fn then4<
 }
 
 pub(crate) fn then6<
-    A: Clone,
-    B: Clone,
-    C: Clone,
-    D: Clone,
-    E: Clone,
+    A,
+    B,
+    C,
+    D,
+    E,
     F_,
     G,
-    F: Fn(A, B, C, D, E, F_) -> G + 'static,
-    FA: Fn() -> Parser<A> + 'static,
-    FB: Fn() -> Parser<B> + 'static,
-    FC: Fn() -> Parser<C> + 'static,
-    FD: Fn() -> Parser<D> + 'static,
-    FE: Fn() -> Parser<E> + 'static,
-    FF: Fn() -> Parser<F_> + 'static,
+    F: FnMut(&A, &B, &C, &D, &E, F_) -> G + 'static,
+    FA: FnOnce() -> Parser<A> + 'static,
+    FB: FnMut() -> Parser<B> + 'static,
+    FC: FnMut() -> Parser<C> + 'static,
+    FD: FnMut() -> Parser<D> + 'static,
+    FE: FnMut() -> Parser<E> + 'static,
+    FF: FnMut() -> Parser<F_> + 'static,
 >(
-    comb: F,
+    mut comb: F,
     a: FA,
-    b: FB,
-    c: FC,
-    d: FD,
-    e: FE,
-    f: FF,
+    mut b: FB,
+    mut c: FC,
+    mut d: FD,
+    mut e: FE,
+    mut f: FF,
 ) -> Parser<G> {
     Box::new(move |toks| {
         let res1 = a()(toks);
@@ -242,12 +240,9 @@ pub(crate) fn then6<
                                                                             .map(|(v6, toks6)| {
                                                                                 (
                                                                                     comb(
-                                                                                        v1.clone(),
-                                                                                        v2.clone(),
-                                                                                        v3.clone(),
-                                                                                        v4.clone(),
-                                                                                        v5.clone(),
-                                                                                        v6,
+                                                                                        &v1, &v2,
+                                                                                        &v3, &v4,
+                                                                                        &v5, v6,
                                                                                     ),
                                                                                     toks6,
                                                                                 )
@@ -277,18 +272,18 @@ pub(crate) fn then6<
     })
 }
 
-pub(crate) fn zero_or_more<A: Clone + 'static, F: Fn() -> Parser<A> + 'static + Clone>(
+pub(crate) fn zero_or_more<A: Clone + 'static, F: FnOnce() -> Parser<A> + 'static + Clone>(
     p: F,
 ) -> Parser<Vec<A>> {
-    alt(move || one_or_more(p.clone()), || empty(vec![]))
+    alt(move || one_or_more(p), || empty(vec![]))
 }
 
-pub(crate) fn one_or_more<A: Clone + 'static, F: Fn() -> Parser<A> + 'static + Clone>(
+pub(crate) fn one_or_more<A: Clone + 'static, F: FnOnce() -> Parser<A> + 'static + Clone>(
     p: F,
 ) -> Parser<Vec<A>> {
     then(
-        |a, mut v: Vec<A>| {
-            v.insert(0, a);
+        move |a, mut v: Vec<A>| {
+            v.insert(0, a.clone());
             v
         },
         p.clone(),
@@ -299,8 +294,8 @@ pub(crate) fn one_or_more<A: Clone + 'static, F: Fn() -> Parser<A> + 'static + C
 pub(crate) fn one_or_more_with_sep<
     A: Clone + 'static,
     B: Clone + 'static,
-    FA: Fn() -> Parser<A> + 'static + Clone,
-    FB: Fn() -> Parser<B> + 'static + Clone,
+    FA: FnOnce() -> Parser<A> + 'static + Clone,
+    FB: FnOnce() -> Parser<B> + 'static + Clone,
 >(
     a: FA,
     b: FB,
@@ -308,12 +303,10 @@ pub(crate) fn one_or_more_with_sep<
     then(
         |x, xs: PartialExpr2<Vec<A>, B>| match xs {
             PartialExpr2::FoundOp(_, mut as_) => {
-                as_.insert(0, x);
+                as_.insert(0, x.clone());
                 as_
             }
-            PartialExpr2::NoOp => {
-                vec![x]
-            }
+            PartialExpr2::NoOp => vec![x.clone()],
         },
         a.clone(),
         move || one_with_sep(a.clone(), b.clone()),
@@ -323,19 +316,19 @@ pub(crate) fn one_or_more_with_sep<
 fn one_with_sep<
     A: Clone + 'static,
     B: Clone + 'static,
-    F: Fn() -> Parser<A> + 'static + Clone,
-    F_: Fn() -> Parser<B> + 'static + Clone,
+    F: FnOnce() -> Parser<A> + 'static + Clone,
+    F_: FnOnce() -> Parser<B> + 'static + Clone,
 >(
     a: F,
     sep: F_,
 ) -> Parser<PartialExpr2<Vec<A>, B>> {
     alt(
         move || {
-            let a_ = a.clone();
-            let sep_ = sep.clone();
-            then(PartialExpr2::FoundOp, sep.clone(), move || {
-                zero_or_more_with_sep(a_.clone(), sep_.clone())
-            })
+            then(
+                |b, a| PartialExpr2::FoundOp(b.clone(), a),
+                sep.clone(),
+                move || zero_or_more_with_sep(a.clone(), sep.clone()),
+            )
         },
         || empty(PartialExpr2::NoOp),
     )
@@ -344,19 +337,16 @@ fn one_with_sep<
 fn zero_or_more_with_sep<
     A: Clone + 'static,
     B: Clone + 'static,
-    F: Fn() -> Parser<A> + Clone + 'static,
-    F_: Fn() -> Parser<B> + Clone + 'static,
+    F: FnOnce() -> Parser<A> + Clone + 'static,
+    F_: FnOnce() -> Parser<B> + Clone + 'static,
 >(
     f: F,
     sep: F_,
 ) -> Parser<Vec<A>> {
-    alt(
-        move || one_or_more_with_sep(f.clone(), sep.clone()),
-        || empty(vec![]),
-    )
+    alt(move || one_or_more_with_sep(f, sep), || empty(vec![]))
 }
 
-#[derive(Clone)]
+// #[derive(Clone)]
 enum PartialExpr2<A, B> {
     FoundOp(B, A),
     NoOp,

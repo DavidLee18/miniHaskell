@@ -86,335 +86,342 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::io::stdout().flush()?;
         std::io::stdin().read_line(&mut input)?;
         input = input.trim().to_string();
-        if input == ":quit" {
-            println!("exiting miniHaskell");
-            break;
-        } else if input == ":state" {
-            println!("Output: {:?}", state.0);
-            println!("Stack: {:?}", state.1);
-            println!("Dump: {:?}", state.2);
-            println!("{:?}", state.3);
-            println!("Globals: {:?}", state.4);
-            println!("Stats: {:?}", state.5);
-            continue;
-        } else if input == ":clear" {
-            println!("{}", termion::clear::All);
-            continue;
-        }
-        let tokens = lang::clex(input);
-        match compiler::lookup(&state.4, &String::from("it")) {
-            None => (),
-            Some(it_addr) => {
-                let it_addr = *it_addr;
-                for i in 0..state.4.len() {
-                    if state.4[i].1 == it_addr {
-                        state.4.remove(i);
-                        break;
-                    }
-                }
-                match state.3.lookup(it_addr) {
-                    Ok(_) => {
-                        prev_it = Some(it_addr);
-                    }
-                    Err(_) => {
-                        eprintln!(
-                            "{}found 'it' in globals but not in heap{}",
-                            color::Fg(color::Red),
-                            color::Fg(color::Reset)
-                        );
-                        break;
-                    }
-                }
+        match input.as_str() {
+            ":quit" => {
+                println!("exiting miniHaskell");
+                break;
             }
-        }
-        for p_name in PRELUDE_NAMES {
-            if state.4.iter().any(|(n, _)| n == p_name) {
-                continue;
-            } else {
-                let (addr, _) = state
-                    .3
-                    .iter()
-                    .find(|(_, n)| match n {
-                        Node::SuperComb(n_, _, _) => n_ == p_name,
-                        _ => false,
-                    })
-                    .expect("prelude not found");
-                state.4.push_back((String::from(p_name), *addr));
-            }
-        }
-        let mut sc_def = match lang::parse_with(lang::parser::sc(), tokens.clone()) {
-            Ok(mut rs) if rs.len() == 1 => {
-                let mut res = rs.remove(0);
-                if res.0 == "it" && res.2.get_var_mut("it").is_some() {
-                    eprintln!(
-                        "{}recursive definition of 'it'{}",
-                        color::Fg(color::Red),
-                        color::Fg(color::Reset)
-                    );
-                    continue;
-                }
-                res
-            }
-            Ok(rs) if rs.len() >= 2 => {
-                eprintln!(
-                    "{}ambiguous expression{}",
-                    color::Fg(color::Red),
-                    color::Fg(color::Reset)
-                );
+            ":state" => {
+                println!("Output: {:?}", state.0);
+                println!("Stack: {:?}", state.1);
+                println!("Dump: {:?}", state.2);
+                println!("{:?}", state.3);
+                println!("Globals: {:?}", state.4);
+                println!("Stats: {:?}", state.5);
                 continue;
             }
-            Err(SyntaxError(t)) => {
-                eprintln!(
-                    "{}syntax error: {:?}{}",
-                    color::Fg(color::Red),
-                    t,
-                    color::Fg(color::Reset)
-                );
+            ":clear" => {
+                println!("{}", termion::clear::All);
                 continue;
             }
-            Ok(_) => match lang::parse_with(lang::parser::expr(), tokens) {
-                Ok(mut rs) if rs.len() == 1 => {
-                    let mut res = rs.remove(0);
-                    match res.get_var_mut("it") {
-                        None => {
-                            let mut i = 0;
-                            while i + 1 != state.4.len() {
-                                if state.4[i].0 == "it" {
-                                    state.4.remove(i);
-                                    i = 0;
-                                }
-                                i += 1;
+            _ => {
+                let tokens = lang::clex(input);
+                match compiler::lookup(&state.4, &String::from("it")) {
+                    None => (),
+                    Some(it_addr) => {
+                        let it_addr = *it_addr;
+                        for i in 0..state.4.len() {
+                            if state.4[i].1 == it_addr {
+                                state.4.remove(i);
+                                break;
                             }
-                            prev_it = None;
                         }
-                        Some(_) => match prev_it {
-                            Some(p_it) => {
-                                let res_addr = allocate_expr_using_prev_it(
-                                    &mut state.3,
-                                    &mut state.4,
-                                    p_it,
-                                    res.clone(),
-                                );
-                                prev_it = match res_addr {
-                                    Ok(rddr) => Some(rddr),
-                                    Err(HeapError::UndefinedName(n)) => {
-                                        eprintln!(
-                                            "{}undefined name '{}'{}",
-                                            color::Fg(color::Red),
-                                            n,
-                                            color::Fg(color::Reset)
-                                        );
-                                        if let Expr::Let { defs, .. } = &res {
-                                            for (n, _) in defs {
-                                                for i in 0..state.4.len() {
-                                                    if state.4[i].0 == *n {
-                                                        state.4.remove(i);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        };
-                                        continue;
-                                    }
-                                    Err(HeapError::NotInstantiable) => {
-                                        eprintln!(
-                                            "{}unable to instantiate{}",
-                                            color::Fg(color::Red),
-                                            color::Fg(color::Reset)
-                                        );
-                                        break;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "{}unknown heap error: {}{}",
-                                            color::Fg(color::Red),
-                                            e,
-                                            color::Fg(color::Reset)
-                                        );
-                                        break;
-                                    }
-                                };
+                        match state.3.lookup(it_addr) {
+                            Ok(_) => {
+                                prev_it = Some(it_addr);
                             }
-                            None => {
+                            Err(_) => {
                                 eprintln!(
-                                    "{}previous definition of 'it' does not exist{}",
+                                    "{}found 'it' in globals but not in heap{}",
                                     color::Fg(color::Red),
                                     color::Fg(color::Reset)
                                 );
-                                continue;
-                            }
-                        },
-                    }
-                    (String::from("it"), vec![], res)
-                }
-                Ok(rs) if rs.len() >= 2 => {
-                    eprintln!(
-                        "{}ambiguous expression{}",
-                        color::Fg(color::Red),
-                        color::Fg(color::Reset)
-                    );
-                    continue;
-                }
-                Err(SyntaxError(t)) => {
-                    eprintln!(
-                        "{}syntax error: {:?} in line {}{}",
-                        color::Fg(color::Red),
-                        t.1,
-                        t.0 + 1,
-                        color::Fg(color::Reset)
-                    );
-                    continue;
-                }
-                Ok(_) => {
-                    eprintln!(
-                        "{}syntax error{}",
-                        color::Fg(color::Red),
-                        color::Fg(color::Reset)
-                    );
-                    continue;
-                }
-            },
-        };
-        let sc_addr = match compiler::lookup(&state.4, &sc_def.0) {
-            Some(ad) => {
-                let ad = *ad;
-                if sc_def.2.get_var_mut("it").is_none() {
-                    state
-                        .3
-                        .update(ad, Node::SuperComb(sc_def.0.clone(), sc_def.1, sc_def.2))?;
-                } else {
-                    match prev_it {
-                        Some(p_it) => {
-                            let res_addr = allocate_expr_using_prev_it(
-                                &mut state.3,
-                                &mut state.4,
-                                p_it,
-                                sc_def.2.clone(),
-                            );
-                            match res_addr {
-                                Ok(rddr) => {
-                                    state.3.update(ad, Node::Ind(rddr))?;
-                                }
-                                Err(HeapError::UndefinedName(n)) => {
-                                    eprintln!(
-                                        "{}undefined name '{}'{}",
-                                        color::Fg(color::Red),
-                                        n,
-                                        color::Fg(color::Reset)
-                                    );
-                                    if let Expr::Let { defs, .. } = &sc_def.2 {
-                                        for (n, _) in defs {
-                                            for i in 0..state.4.len() {
-                                                if state.4[i].0 == *n {
-                                                    state.4.remove(i);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    };
-                                    continue;
-                                }
-                                Err(HeapError::NotInstantiable) => {
-                                    eprintln!(
-                                        "{}unable to instantiate{}",
-                                        color::Fg(color::Red),
-                                        color::Fg(color::Reset)
-                                    );
-                                    break;
-                                }
-                                Err(e) => {
-                                    eprintln!(
-                                        "{}unknown heap error: {}{}",
-                                        color::Fg(color::Red),
-                                        e,
-                                        color::Fg(color::Reset)
-                                    );
-                                    break;
-                                }
+                                break;
                             }
                         }
-                        None => {
+                    }
+                }
+                for p_name in PRELUDE_NAMES {
+                    if state.4.iter().any(|(n, _)| n == p_name) {
+                        continue;
+                    } else {
+                        let (addr, _) = state
+                            .3
+                            .iter()
+                            .find(|(_, n)| match n {
+                                Node::SuperComb(n_, _, _) => n_ == p_name,
+                                _ => false,
+                            })
+                            .expect("prelude not found");
+                        state.4.push_back((String::from(p_name), *addr));
+                    }
+                }
+                let mut sc_def = match lang::parse_with(lang::parser::sc(), tokens.clone()) {
+                    Ok(mut rs) if rs.len() == 1 => {
+                        let mut res = rs.remove(0);
+                        if res.0 == "it" && res.2.get_var_mut("it").is_some() {
                             eprintln!(
-                                "{}previous definition of 'it' does not exist{}",
+                                "{}recursive definition of 'it'{}",
                                 color::Fg(color::Red),
                                 color::Fg(color::Reset)
                             );
                             continue;
                         }
+                        res
                     }
-                }
-                ad
-            }
-            None => match prev_it {
-                Some(res_addr) => res_addr,
-                None => state.3.alloc(Node::SuperComb(
-                    sc_def.0.clone(),
-                    sc_def.1,
-                    sc_def.2.clone(),
-                )),
-            },
-        };
-        let look_up = (sc_def.0.clone(), sc_addr);
-        if !state.4.contains(&look_up) {
-            state.4.push_back(look_up);
-        }
-        if sc_def.0 == "it" {
-            state.1.push(sc_addr);
-            states = match compiler::eval(state.clone()) {
-                Ok(ss) => ss,
-                Err(ee) => {
-                    eprintln!("{}{}{}", color::Fg(color::Red), ee, color::Fg(color::Reset));
-                    continue;
-                }
-            };
-            state = match states.pop() {
-                Some(v) => v,
-                None => {
-                    eprintln!(
-                        "{}empty state{}",
-                        color::Fg(color::Red),
-                        color::Fg(color::Reset)
-                    );
-                    break;
-                }
-            };
-            match compiler::get_stack_results(&state) {
-                Ok(nodes) => match nodes.len() {
-                    1 => match &nodes[0] {
-                        Node::Prim(_, Primitive::Stop) => println!("{:?}", state.0),
-                        Node::Num(n) => println!("{}", n),
-                        Node::Data(_, _) => println!("{:?}", nodes[0]),
-                        n => {
+                    Ok(rs) if rs.len() >= 2 => {
+                        eprintln!(
+                            "{}ambiguous expression{}",
+                            color::Fg(color::Red),
+                            color::Fg(color::Reset)
+                        );
+                        continue;
+                    }
+                    Err(SyntaxError(t)) => {
+                        eprintln!(
+                            "{}syntax error: {:?}{}",
+                            color::Fg(color::Red),
+                            t,
+                            color::Fg(color::Reset)
+                        );
+                        continue;
+                    }
+                    Ok(_) => match lang::parse_with(lang::parser::expr(), tokens) {
+                        Ok(mut rs) if rs.len() == 1 => {
+                            let mut res = rs.remove(0);
+                            match res.get_var_mut("it") {
+                                None => {
+                                    let mut i = 0;
+                                    while i + 1 != state.4.len() {
+                                        if state.4[i].0 == "it" {
+                                            state.4.remove(i);
+                                            i = 0;
+                                        }
+                                        i += 1;
+                                    }
+                                    prev_it = None;
+                                }
+                                Some(_) => match prev_it {
+                                    Some(p_it) => {
+                                        let res_addr = allocate_expr_using_prev_it(
+                                            &mut state.3,
+                                            &mut state.4,
+                                            p_it,
+                                            res.clone(),
+                                        );
+                                        prev_it = match res_addr {
+                                            Ok(rddr) => Some(rddr),
+                                            Err(HeapError::UndefinedName(n)) => {
+                                                eprintln!(
+                                                    "{}undefined name '{}'{}",
+                                                    color::Fg(color::Red),
+                                                    n,
+                                                    color::Fg(color::Reset)
+                                                );
+                                                if let Expr::Let { defs, .. } = &res {
+                                                    for (n, _) in defs {
+                                                        for i in 0..state.4.len() {
+                                                            if state.4[i].0 == *n {
+                                                                state.4.remove(i);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                };
+                                                continue;
+                                            }
+                                            Err(HeapError::NotInstantiable) => {
+                                                eprintln!(
+                                                    "{}unable to instantiate{}",
+                                                    color::Fg(color::Red),
+                                                    color::Fg(color::Reset)
+                                                );
+                                                break;
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "{}unknown heap error: {}{}",
+                                                    color::Fg(color::Red),
+                                                    e,
+                                                    color::Fg(color::Reset)
+                                                );
+                                                break;
+                                            }
+                                        };
+                                    }
+                                    None => {
+                                        eprintln!(
+                                            "{}previous definition of 'it' does not exist{}",
+                                            color::Fg(color::Red),
+                                            color::Fg(color::Reset)
+                                        );
+                                        continue;
+                                    }
+                                },
+                            }
+                            (String::from("it"), vec![], res)
+                        }
+                        Ok(rs) if rs.len() >= 2 => {
                             eprintln!(
-                                "{}invalid node: {:?}{}",
+                                "{}ambiguous expression{}",
                                 color::Fg(color::Red),
-                                n,
+                                color::Fg(color::Reset)
+                            );
+                            continue;
+                        }
+                        Err(SyntaxError(t)) => {
+                            eprintln!(
+                                "{}syntax error: {:?} in line {}{}",
+                                color::Fg(color::Red),
+                                t.1,
+                                t.0 + 1,
+                                color::Fg(color::Reset)
+                            );
+                            continue;
+                        }
+                        Ok(_) => {
+                            eprintln!(
+                                "{}syntax error{}",
+                                color::Fg(color::Red),
                                 color::Fg(color::Reset)
                             );
                             continue;
                         }
                     },
-                    0 => println!("{:?}", state.0),
-                    _ => {
-                        eprintln!(
-                            "{}invalid stack state: {:?} {}",
-                            color::Fg(color::Red),
-                            state.1,
-                            color::Fg(color::Reset)
-                        );
-                        continue;
+                };
+                let sc_addr = match compiler::lookup(&state.4, &sc_def.0) {
+                    Some(ad) => {
+                        let ad = *ad;
+                        if sc_def.2.get_var_mut("it").is_none() {
+                            state.3.update(
+                                ad,
+                                Node::SuperComb(sc_def.0.clone(), sc_def.1, sc_def.2),
+                            )?;
+                        } else {
+                            match prev_it {
+                                Some(p_it) => {
+                                    let res_addr = allocate_expr_using_prev_it(
+                                        &mut state.3,
+                                        &mut state.4,
+                                        p_it,
+                                        sc_def.2.clone(),
+                                    );
+                                    match res_addr {
+                                        Ok(rddr) => {
+                                            state.3.update(ad, Node::Ind(rddr))?;
+                                        }
+                                        Err(HeapError::UndefinedName(n)) => {
+                                            eprintln!(
+                                                "{}undefined name '{}'{}",
+                                                color::Fg(color::Red),
+                                                n,
+                                                color::Fg(color::Reset)
+                                            );
+                                            if let Expr::Let { defs, .. } = &sc_def.2 {
+                                                for (n, _) in defs {
+                                                    for i in 0..state.4.len() {
+                                                        if state.4[i].0 == *n {
+                                                            state.4.remove(i);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            };
+                                            continue;
+                                        }
+                                        Err(HeapError::NotInstantiable) => {
+                                            eprintln!(
+                                                "{}unable to instantiate{}",
+                                                color::Fg(color::Red),
+                                                color::Fg(color::Reset)
+                                            );
+                                            break;
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "{}unknown heap error: {}{}",
+                                                color::Fg(color::Red),
+                                                e,
+                                                color::Fg(color::Reset)
+                                            );
+                                            break;
+                                        }
+                                    }
+                                }
+                                None => {
+                                    eprintln!(
+                                        "{}previous definition of 'it' does not exist{}",
+                                        color::Fg(color::Red),
+                                        color::Fg(color::Reset)
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+                        ad
                     }
-                },
-                Err(e) => {
-                    eprintln!(
-                        "{}invalid state: {}{}",
-                        color::Fg(color::Red),
-                        e,
-                        color::Fg(color::Reset)
-                    );
-                    continue;
+                    None => match prev_it {
+                        Some(res_addr) => res_addr,
+                        None => state.3.alloc(Node::SuperComb(
+                            sc_def.0.clone(),
+                            sc_def.1,
+                            sc_def.2.clone(),
+                        )),
+                    },
+                };
+                let look_up = (sc_def.0.clone(), sc_addr);
+                if !state.4.contains(&look_up) {
+                    state.4.push_back(look_up);
                 }
-            };
+                if sc_def.0 == "it" {
+                    state.1.push(sc_addr);
+                    states = match compiler::eval(state.clone()) {
+                        Ok(ss) => ss,
+                        Err(ee) => {
+                            eprintln!("{}{}{}", color::Fg(color::Red), ee, color::Fg(color::Reset));
+                            continue;
+                        }
+                    };
+                    state = match states.pop() {
+                        Some(v) => v,
+                        None => {
+                            eprintln!(
+                                "{}empty state{}",
+                                color::Fg(color::Red),
+                                color::Fg(color::Reset)
+                            );
+                            break;
+                        }
+                    };
+                    match compiler::get_stack_results(&state) {
+                        Ok(nodes) => match nodes.len() {
+                            1 => match &nodes[0] {
+                                Node::Prim(_, Primitive::Stop) => println!("{:?}", state.0),
+                                Node::Num(n) => println!("{}", n),
+                                Node::Data(_, _) => println!("{:?}", nodes[0]),
+                                n => {
+                                    eprintln!(
+                                        "{}invalid node: {:?}{}",
+                                        color::Fg(color::Red),
+                                        n,
+                                        color::Fg(color::Reset)
+                                    );
+                                    continue;
+                                }
+                            },
+                            0 => println!("{:?}", state.0),
+                            _ => {
+                                eprintln!(
+                                    "{}invalid stack state: {:?} {}",
+                                    color::Fg(color::Red),
+                                    state.1,
+                                    color::Fg(color::Reset)
+                                );
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!(
+                                "{}invalid state: {}{}",
+                                color::Fg(color::Red),
+                                e,
+                                color::Fg(color::Reset)
+                            );
+                            continue;
+                        }
+                    };
+                }
+            }
         }
     }
     Ok(())
@@ -427,13 +434,8 @@ fn allocate_expr_using_prev_it(
     expr: CoreExpr,
 ) -> Result<Addr, HeapError> {
     match expr {
-        CoreExpr::Var(v) => {
-            if v == "it" {
-                Ok(heap.alloc(Node::Ind(prev_it_addr)))
-            } else {
-                Err(HeapError::UndefinedName(v))
-            }
-        }
+        CoreExpr::Var(v) if v == "it" => Ok(heap.alloc(Node::Ind(prev_it_addr))),
+        CoreExpr::Var(v) => Err(HeapError::UndefinedName(v)),
         CoreExpr::Num(n) => Ok(heap.alloc(Node::Num(n))),
         CoreExpr::Constr { tag, arity } => Ok(heap.alloc(Node::Prim(
             String::from("Pack"),
@@ -446,14 +448,16 @@ fn allocate_expr_using_prev_it(
         }
         CoreExpr::Let { defs, body } => {
             for (n, mut e) in defs {
-                if n != "it" && e.get_var_mut("it").is_none() {
-                    let addr = heap.alloc(Node::SuperComb(n.clone(), vec![], e));
-                    env.push_front((n, addr));
-                } else if n == "it" {
-                    panic!("conflicting 'it'");
-                } else {
-                    let addr = allocate_expr_using_prev_it(heap, env, prev_it_addr, e)?;
-                    env.push_front((n, addr));
+                match (n.as_str(), e.get_var_mut("it")) {
+                    ("it", _) => panic!("conflicting 'it'"),
+                    (_, None) => {
+                        let addr = heap.alloc(Node::SuperComb(n.clone(), vec![], e));
+                        env.push_front((n, addr));
+                    }
+                    _ => {
+                        let addr = allocate_expr_using_prev_it(heap, env, prev_it_addr, e)?;
+                        env.push_front((n, addr));
+                    }
                 }
             }
             allocate_expr_using_prev_it(heap, env, prev_it_addr, *body)

@@ -19,15 +19,11 @@ pub(crate) fn map_accuml<A, B, C, F: Fn(&mut A, B) -> C>(
     acc: &mut A,
     inputs: Vec<B>,
 ) -> VecDeque<C> {
-    if inputs.is_empty() {
-        VecDeque::new()
-    } else {
-        let mut res = VecDeque::new();
-        for input in inputs {
-            res.push_back(f(acc, input));
-        }
-        res
+    let mut res = VecDeque::new();
+    for input in inputs {
+        res.push_back(f(acc, input));
     }
+    res
 }
 
 impl<A> Heap<A> {
@@ -112,12 +108,13 @@ impl Heap<Node> {
             }
         }
         if i < len {
-            return Err(HeapError::ArgsLengthMismatch {
+            Err(HeapError::ArgsLengthMismatch {
                 expected: len,
                 actual: i,
-            });
+            })
+        } else {
+            Ok(res)
         }
-        Ok(res)
     }
 
     pub fn instantiate(

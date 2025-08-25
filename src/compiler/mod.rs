@@ -216,14 +216,13 @@ fn step(state: &mut TiState) -> Result<(), EvalError> {
             let (args, body) = (args.clone(), body.clone());
             sc_step(state, last_stack, args, body)
         }
-        Node::Num(_) => {
-            if stack.len() != 1 {
-                Err(EvalError::NumAp)
-            } else {
+        Node::Num(_) => match stack.len() {
+            1 => {
                 *stack = dump.pop().ok_or(EvalError::EmptyDump)?;
                 Ok(())
             }
-        }
+            _ => Err(EvalError::NumAp),
+        },
         Node::Ind(r) => {
             stack.pop().ok_or(EvalError::EmptyStack)?;
             stack.push(*r);
@@ -233,14 +232,13 @@ fn step(state: &mut TiState) -> Result<(), EvalError> {
             let p = p.clone();
             prim_step(state, p)
         }
-        Node::Data(_, _) => {
-            if stack.len() != 1 {
-                Err(EvalError::DataAp)
-            } else {
+        Node::Data(_, _) => match stack.len() {
+            1 => {
                 *stack = dump.pop().ok_or(EvalError::EmptyDump)?;
                 Ok(())
             }
-        }
+            _ => Err(EvalError::DataAp),
+        },
     }
 }
 
@@ -286,150 +284,138 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
         | Primitive::CasePair
         | Primitive::Print => 2,
     };
-    if stack.len() != args_len + 1 {
-        Err(EvalError::ArgsLengthMismatch {
-            expected: args_len + 1,
-            actual: stack.len(),
-        })
-    } else {
-        let args = heap.get_args(stack, args_len).map_err(EvalError::Heap)?;
-        match &prim {
-            Primitive::Neg => {
-                let arg = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                match arg {
-                    Node::Num(n) => {
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        heap.update(*stack.last().ok_or(EvalError::EmptyStack)?, Node::Num(-n))
-                            .map_err(EvalError::Heap)
-                    }
-                    _ => {
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        dump.push(stack.clone());
-                        *stack = args;
-                        Ok(())
-                    }
-                }
-            }
-            Primitive::Constr(t, n) => {
-                for _ in 0..*n {
-                    stack.pop().ok_or(EvalError::EmptyStack)?;
-                }
-                heap.update(
-                    *stack.last().ok_or(EvalError::EmptyStack)?,
-                    Node::Data(*t, args),
-                )
-                .map_err(EvalError::Heap)
-            }
-            Primitive::If => {
-                let cond = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                match unwrap_data(stack, dump, vec![args[0]], cond)? {
-                    Some((t, args_)) => {
-                        if !args_.is_empty() {
-                            return Err(EvalError::TypeMismatch);
-                        }
-                        match t {
-                            1 | 2 => {
-                                stack.pop().ok_or(EvalError::EmptyStack)?;
-                                stack.pop().ok_or(EvalError::EmptyStack)?;
-                                stack.pop().ok_or(EvalError::EmptyStack)?;
-                                heap.update(
-                                    *stack.last().ok_or(EvalError::EmptyStack)?,
-                                    Node::Ind(args[args_len - *t as usize]),
-                                )
+    match stack.len() {
+        l if l == args_len + 1 => {
+            let args = heap.get_args(stack, args_len).map_err(EvalError::Heap)?;
+            match &prim {
+                Primitive::Neg => {
+                    let arg = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                    match arg {
+                        Node::Num(n) => {
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            heap.update(*stack.last().ok_or(EvalError::EmptyStack)?, Node::Num(-n))
                                 .map_err(EvalError::Heap)
-                            }
-                            _ => Err(EvalError::TypeMismatch),
+                        }
+                        _ => {
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            dump.push(stack.clone());
+                            *stack = args;
+                            Ok(())
                         }
                     }
-                    None => Ok(()),
                 }
-            }
-            Primitive::Add
-            | Primitive::Sub
-            | Primitive::Mul
-            | Primitive::Div
-            | Primitive::Greater
-            | Primitive::GreaterEq
-            | Primitive::Less
-            | Primitive::LessEq
-            | Primitive::Eq
-            | Primitive::NotEq => {
-                let arg1 = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                let arg2 = heap.lookup(args[1]).map_err(EvalError::Heap)?;
-                let res = match (arg1, arg2) {
-                    (Node::Num(_), Node::Data(_, _)) | (Node::Data(_, _), Node::Num(_)) => {
-                        return Err(EvalError::TypeMismatch);
+                Primitive::Constr(t, n) => {
+                    for _ in 0..*n {
+                        stack.pop().ok_or(EvalError::EmptyStack)?;
                     }
-                    (Node::Data(_, _), Node::Data(_, _)) => match &prim {
-                        Primitive::Eq | Primitive::NotEq => prim.eq_data(arg1, arg2),
-                        _ => return Err(EvalError::TypeMismatch),
-                    },
-                    (Node::Num(m), Node::Num(n)) => match &prim {
-                        Primitive::Eq
-                        | Primitive::NotEq
-                        | Primitive::LessEq
-                        | Primitive::Less
-                        | Primitive::GreaterEq
-                        | Primitive::Greater => prim.cmp(*m, *n),
-                        Primitive::Add | Primitive::Sub | Primitive::Mul | Primitive::Div => {
-                            Node::Num(prim.arith(*m, *n))
-                        }
-                        _ => return Err(EvalError::TypeMismatch),
-                    },
-                    (Node::Num(_), _) | (Node::Data(_, _), _) => {
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        dump.push(stack.clone());
-                        *stack = vec![args[1]];
-                        return Ok(());
-                    }
-                    (_, _) => {
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        dump.push(stack.clone());
-                        *stack = vec![args[0]];
-                        return Ok(());
-                    }
-                };
-                stack.pop().ok_or(EvalError::EmptyStack)?;
-                stack.pop().ok_or(EvalError::EmptyStack)?;
-                heap.update(*stack.last().unwrap(), res)
+                    heap.update(
+                        *stack.last().ok_or(EvalError::EmptyStack)?,
+                        Node::Data(*t, args),
+                    )
                     .map_err(EvalError::Heap)
-            }
-            Primitive::CasePair => {
-                let pair = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                match unwrap_data(stack, dump, vec![args[0]], pair)? {
-                    Some((t, args_)) => {
-                        if *t != 1 || args_.len() != 2 {
+                }
+                Primitive::If => {
+                    let cond = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                    match unwrap_data(stack, dump, vec![args[0]], cond)? {
+                        Some((_, args_)) if !args_.is_empty() => Err(EvalError::TypeMismatch),
+                        Some((t, _)) if *t == 1 || *t == 2 => {
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            heap.update(
+                                *stack.last().ok_or(EvalError::EmptyStack)?,
+                                Node::Ind(args[args_len - *t as usize]),
+                            )
+                            .map_err(EvalError::Heap)
+                        }
+                        Some(_) => Err(EvalError::TypeMismatch),
+                        None => Ok(()),
+                    }
+                }
+                Primitive::Add
+                | Primitive::Sub
+                | Primitive::Mul
+                | Primitive::Div
+                | Primitive::Greater
+                | Primitive::GreaterEq
+                | Primitive::Less
+                | Primitive::LessEq
+                | Primitive::Eq
+                | Primitive::NotEq => {
+                    let arg1 = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                    let arg2 = heap.lookup(args[1]).map_err(EvalError::Heap)?;
+                    let res = match (arg1, arg2) {
+                        (Node::Num(_), Node::Data(_, _)) | (Node::Data(_, _), Node::Num(_)) => {
                             return Err(EvalError::TypeMismatch);
                         }
-                        let f_addr = args[1];
-                        let fst = args_[0];
-                        let snd = args_[1];
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        stack.pop().ok_or(EvalError::EmptyStack)?;
-                        let f_a = heap.alloc(Node::Ap(f_addr, fst));
-                        heap.update(
-                            *stack.last().ok_or(EvalError::EmptyStack)?,
-                            Node::Ap(f_a, snd),
-                        )
+                        (Node::Data(_, _), Node::Data(_, _)) => match &prim {
+                            Primitive::Eq | Primitive::NotEq => prim.eq_data(arg1, arg2),
+                            _ => return Err(EvalError::TypeMismatch),
+                        },
+                        (Node::Num(m), Node::Num(n)) => match &prim {
+                            Primitive::Eq
+                            | Primitive::NotEq
+                            | Primitive::LessEq
+                            | Primitive::Less
+                            | Primitive::GreaterEq
+                            | Primitive::Greater => prim.cmp(*m, *n),
+                            Primitive::Add | Primitive::Sub | Primitive::Mul | Primitive::Div => {
+                                Node::Num(prim.arith(*m, *n))
+                            }
+                            _ => return Err(EvalError::TypeMismatch),
+                        },
+                        (Node::Num(_), _) | (Node::Data(_, _), _) => {
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            dump.push(stack.clone());
+                            *stack = vec![args[1]];
+                            return Ok(());
+                        }
+                        (_, _) => {
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            dump.push(stack.clone());
+                            *stack = vec![args[0]];
+                            return Ok(());
+                        }
+                    };
+                    stack.pop().ok_or(EvalError::EmptyStack)?;
+                    stack.pop().ok_or(EvalError::EmptyStack)?;
+                    heap.update(*stack.last().unwrap(), res)
                         .map_err(EvalError::Heap)
-                    }
-                    None => Ok(()),
                 }
-            }
-            Primitive::CaseList => {
-                let list = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                match unwrap_data(stack, dump, vec![args[0]], list)? {
-                    Some((t, args_)) => {
-                        if *t == 1 && args_.is_empty() {
+                Primitive::CasePair => {
+                    let pair = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                    match unwrap_data(stack, dump, vec![args[0]], pair)? {
+                        Some((1, args_)) if args_.len() == 2 => {
+                            let f_addr = args[1];
+                            let fst = args_[0];
+                            let snd = args_[1];
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            stack.pop().ok_or(EvalError::EmptyStack)?;
+                            let f_a = heap.alloc(Node::Ap(f_addr, fst));
+                            heap.update(
+                                *stack.last().ok_or(EvalError::EmptyStack)?,
+                                Node::Ap(f_a, snd),
+                            )
+                            .map_err(EvalError::Heap)
+                        }
+                        Some(_) => Err(EvalError::TypeMismatch),
+                        None => Ok(()),
+                    }
+                }
+                Primitive::CaseList => {
+                    let list = heap.lookup(args[0]).map_err(EvalError::Heap)?;
+                    match unwrap_data(stack, dump, vec![args[0]], list)? {
+                        Some((1, args_)) if args_.is_empty() => {
                             let nil = args[1];
                             stack.pop().ok_or(EvalError::EmptyStack)?;
                             stack.pop().ok_or(EvalError::EmptyStack)?;
                             stack.pop().ok_or(EvalError::EmptyStack)?;
                             heap.update(*stack.last().ok_or(EvalError::EmptyStack)?, Node::Ind(nil))
                                 .map_err(EvalError::Heap)
-                        } else if *t == 2 && args_.len() == 2 {
+                        }
+                        Some((2, args_)) if args_.len() == 2 => {
                             let head = args_[0];
                             let tail = args_[1];
                             let f = args[2];
@@ -442,18 +428,14 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                                 Node::Ap(f_h, tail),
                             )
                             .map_err(EvalError::Heap)
-                        } else {
-                            Err(EvalError::TypeMismatch)
                         }
+                        Some(_) => Err(EvalError::TypeMismatch),
+                        None => Ok(()),
                     }
-                    None => Ok(()),
                 }
-            }
-            Primitive::Abort => unreachable!(),
-            Primitive::Stop => unreachable!(),
-            Primitive::Print => {
-                let arg1 = heap.lookup(args[0]).map_err(EvalError::Heap)?;
-                match arg1 {
+                Primitive::Abort => unreachable!(),
+                Primitive::Stop => unreachable!(),
+                Primitive::Print => match heap.lookup(args[0]).map_err(EvalError::Heap)? {
                     Node::Num(n) => {
                         output.push(*n);
                         stack.pop().ok_or(EvalError::EmptyStack)?;
@@ -469,9 +451,13 @@ fn prim_step(state: &mut TiState, prim: Primitive) -> Result<(), EvalError> {
                         *stack = vec![args[0]];
                         Ok(())
                     }
-                }
+                },
             }
         }
+        _ => Err(EvalError::ArgsLengthMismatch {
+            expected: args_len + 1,
+            actual: stack.len(),
+        }),
     }
 }
 
@@ -515,17 +501,14 @@ fn sc_step(
 
 fn ti_final(state: &TiState) -> Result<bool, EvalError> {
     let (_, stack, dump, heap, _, _) = state;
-    if !dump.is_empty() {
-        Ok(false)
-    } else {
-        match stack.len() {
-            1 => heap
-                .lookup(stack[0])
-                .map(Node::is_data_node)
-                .map_err(EvalError::Heap),
-            0 => Err(EvalError::EmptyStack),
-            _ => Ok(false),
-        }
+    match (dump.is_empty(), stack.len()) {
+        (false, _) => Ok(false),
+        (_, 1) => heap
+            .lookup(stack[0])
+            .map(Node::is_data_node)
+            .map_err(EvalError::Heap),
+        (_, 0) => Err(EvalError::EmptyStack),
+        _ => Ok(false),
     }
 }
 
@@ -540,10 +523,8 @@ pub(crate) fn show_results(
 ) -> Result<(Vec<i64>, Vec<Node>, TiStats), ResultError> {
     let last_state = states.last().ok_or(ResultError::NoState)?;
     let mut nodes = get_stack_results(last_state)?;
-    if nodes.len() == 1 {
-        if let Node::Prim(_, Primitive::Stop) = nodes[0] {
-            nodes.remove(0);
-        }
+    if let Some(&Node::Prim(_, Primitive::Stop)) = nodes.get(0) {
+        nodes.remove(0);
     }
     let (output, _, _, _, _, stat) = last_state;
     Ok((output.clone(), nodes, stat.clone()))
