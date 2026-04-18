@@ -1,9 +1,7 @@
-use crate::compiler::primitives::Primitive;
 use crate::compiler::Node;
+use crate::compiler::primitives::Primitive;
 use crate::lang::{CoreExpr, Name};
 use std::collections::VecDeque;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(crate) struct Heap<A> {
@@ -139,8 +137,12 @@ impl Heap<Node> {
                 let a2 = self.instantiate(*e2, env)?;
                 Ok(self.alloc(Node::Ap(a1, a2)))
             }
-            CoreExpr::Let { defs, body } => {
-                for (name, expr) in defs {
+            CoreExpr::Let {
+                is_rec,
+                defns,
+                body,
+            } => {
+                for (name, expr) in defns {
                     let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
                     env.push_front((name, addr));
                 }
@@ -177,8 +179,12 @@ impl Heap<Node> {
                 let a2 = self.instantiate(*e2, env)?;
                 self.update(root_addr, Node::Ap(a1, a2))
             }
-            CoreExpr::Let { defs, body } => {
-                for (name, expr) in defs {
+            CoreExpr::Let {
+                is_rec,
+                defns,
+                body,
+            } => {
+                for (name, expr) in defns {
                     let addr = self.alloc(Node::SuperComb(name.clone(), vec![], expr));
                     env.push_front((name, addr));
                 }
@@ -202,27 +208,16 @@ impl Heap<Node> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum HeapError {
+    #[error("item not found on the heap")]
     NotFound,
+    #[error("not an Ap node")]
     NotAp,
+    #[error("expected {expected} arguments, got {actual}")]
     ArgsLengthMismatch { expected: usize, actual: usize },
+    #[error("the expression is not instantiable")]
     NotInstantiable,
+    #[error("undefined name '{0}'")]
     UndefinedName(String),
 }
-
-impl Display for HeapError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            HeapError::NotFound => write!(f, "item not found on the heap"),
-            HeapError::NotAp => write!(f, "not an Ap node"),
-            HeapError::ArgsLengthMismatch { expected, actual } => {
-                write!(f, "expected {} arguments, got {}", expected, actual)
-            }
-            HeapError::NotInstantiable => write!(f, "the expression is not instantiable"),
-            HeapError::UndefinedName(name) => write!(f, "undefined name '{}'", name),
-        }
-    }
-}
-
-impl Error for HeapError {}

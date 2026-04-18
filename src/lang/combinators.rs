@@ -1,5 +1,5 @@
-use crate::lang::parser::{empty, Parser};
 use crate::lang::Token;
+use crate::lang::parser::{Parser, empty};
 
 pub(crate) fn alt<A, F: FnOnce() -> Parser<A> + 'static, F_: FnOnce() -> Parser<A> + 'static>(
     a: F,

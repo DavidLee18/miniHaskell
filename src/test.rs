@@ -9,6 +9,8 @@ fn let_case() {
     )))
     .expect("expected to be parsed");
 
+    println!("{:?}", res);
+
     assert_eq!(res.len(), 1);
 
     assert_eq!(res[0][0].0, "f");
@@ -19,9 +21,14 @@ fn let_case() {
     assert_eq!(res[0][1].1[0], "x");
     assert_eq!(res[0][1].1[1], "y");
     match &res[0][1].2 {
-        Expr::Let { defs, body } => {
-            assert_eq!(defs[0].0, "z");
-            assert_eq!(defs[0].1, Expr::Var("x".to_string()));
+        Expr::Let {
+            is_rec,
+            defns,
+            body,
+        } => {
+            assert_eq!(*is_rec, false);
+            assert_eq!(defns[0].0, "z");
+            assert_eq!(defns[0].1, Expr::Var("x".to_string()));
             assert_eq!(**body, Expr::Var("z".to_string()));
         }
         _ => panic!("expected let"),
@@ -31,9 +38,14 @@ fn let_case() {
     assert_eq!(res[0][2].1[0], "x");
     match &res[0][2].2 {
         Expr::Case(be, als) => match &**be {
-            Expr::Let { defs, body } => {
-                assert_eq!(defs[0].0, "y");
-                assert_eq!(defs[0].1, Expr::Var("x".to_string()));
+            Expr::Let {
+                is_rec,
+                defns,
+                body,
+            } => {
+                assert_eq!(*is_rec, false);
+                assert_eq!(defns[0].0, "y");
+                assert_eq!(defns[0].1, Expr::Var("x".to_string()));
                 assert_eq!(**body, Expr::Var("y".to_string()));
                 assert_eq!(als[0], (1, vec![], Expr::Num(2)));
                 assert_eq!(als[1], (2, vec![], Expr::Num(5)));
@@ -210,7 +222,9 @@ fn nested_let() {
 
 #[test]
 fn letrec() {
-    let res = run(String::from("pair x y f = f x y; fst p = p K; snd p = p K1; f x y = let a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4"));
+    let res = run(String::from(
+        "pair x y f = f x y; fst p = p K; snd p = p K1; f x y = let a = pair x b; b = pair y a in fst (snd (snd (snd a))); main = f 3 4",
+    ));
     match res {
         Ok(v) => {
             assert_eq!(v.len(), 1);

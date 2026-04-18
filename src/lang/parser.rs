@@ -197,7 +197,8 @@ fn expr5() -> Parser<CoreExpr> {
 fn let_in() -> Parser<CoreExpr> {
     then4(
         |_, dfs: &Vec<(String, CoreExpr)>, _, e| Expr::Let {
-            defs: dfs.clone(),
+            is_rec: false,
+            defns: dfs.clone(),
             body: Box::new(e),
         },
         || lit("let"),

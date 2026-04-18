@@ -1,9 +1,12 @@
 use crate::lang::parser::Parser;
 use std::fs::read_to_string;
 use std::path::PathBuf;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) mod combinators;
 pub(crate) mod parser;
+
+pub(crate) type Name = String;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<A> {
@@ -15,14 +18,29 @@ pub enum Expr<A> {
     },
     Ap(Box<Expr<A>>, Box<Expr<A>>),
     Let {
-        defs: Vec<(A, Expr<A>)>,
+        is_rec: bool,
+        defns: Vec<(A, Expr<A>)>,
         body: Box<Expr<A>>,
     },
     Case(Box<Expr<A>>, Vec<Alter<A>>),
     Lam(Vec<A>, Box<Expr<A>>),
 }
 
+pub type Alter<A> = (u32, Vec<A>, Expr<A>);
+pub type ScDefn<A> = (Name, Vec<A>, Expr<A>);
+pub type Program<A> = Vec<ScDefn<A>>;
+pub(crate) type CoreExpr = Expr<Name>;
+pub type CoreAlt = Alter<Name>;
+pub(crate) type CoreProgram = Program<Name>;
+pub(crate) type CoreScDefn = ScDefn<Name>;
+
 impl<A> Expr<A> {
+    pub fn is_atomic(&self) -> bool {
+        match self {
+            Expr::Var(_) | Expr::Num(_) => true,
+            _ => false,
+        }
+    }
     pub fn is_let(&self) -> bool {
         match self {
             Expr::Let { .. } => true,
@@ -43,94 +61,288 @@ impl<A> Expr<A> {
     }
 }
 
-pub(crate) type Name = String;
-pub(crate) type CoreExpr = Expr<Name>;
-type Alter<A> = (u32, Vec<A>, Expr<A>);
-type CoreAlt = Alter<Name>;
+impl<A: std::fmt::Display> Expr<A> {
+    fn pprint(&self) -> ISeq {
+        match self {
+            Expr::Num(n) => ISeq::Str(n.to_string()),
+            Expr::Var(v) => ISeq::Str(v.clone()),
+            Expr::Ap(a, b) => ISeq::Append(
+                Box::new(ISeq::Append(
+                    Box::new(a.pprint()),
+                    Box::new(ISeq::Str(String::from(" "))),
+                )),
+                Box::new(b.pprint_a()),
+            ),
+            Expr::Let {
+                is_rec,
+                defns,
+                body,
+            } => i_concat(vec![
+                ISeq::Str(String::from(if *is_rec { "letrec" } else { "let" })),
+                ISeq::Indent(Box::new(ISeq::Newline)),
+                Self::pprint_defns(defns),
+                ISeq::Newline,
+                ISeq::Str(String::from("in ")),
+                ISeq::Indent(Box::new(ISeq::Newline)),
+                body.pprint(),
+            ]),
+            Expr::Case(pat, alts) => i_concat(vec![
+                ISeq::Str(String::from("case ")),
+                pat.pprint(),
+                ISeq::Str(String::from(" of ")),
+                ISeq::Indent(Box::new(ISeq::Newline)),
+                Self::pprint_alts(alts),
+            ]),
+            Expr::Lam(params, expr) => i_concat(vec![
+                ISeq::Str(String::from("\\")),
+                i_interleave(
+                    ISeq::Str(String::from(" ")),
+                    params.iter().map(|p| ISeq::Str(p.to_string())),
+                ),
+                ISeq::Str(String::from(" -> ")),
+                ISeq::Indent(Box::new(ISeq::Newline)),
+                expr.pprint(),
+            ]),
+            Expr::Constr { tag, arity } => ISeq::Str(format!("Pack{{{}, {}}}", tag, arity)),
+        }
+    }
 
-type Program<A> = Vec<ScDefn<A>>;
-pub(crate) type CoreProgram = Program<Name>;
+    fn pprint_a(&self) -> ISeq {
+        match self {
+            Expr::Num(_) | Expr::Var(_) => self.pprint(),
+            _ => i_concat(vec![
+                ISeq::Str(String::from("(")),
+                self.pprint(),
+                ISeq::Str(String::from(")")),
+            ]),
+        }
+    }
 
-type ScDefn<A> = (Name, Vec<A>, Expr<A>);
-pub(crate) type CoreScDefn = ScDefn<Name>;
+    fn pprint_defns(defns: &[(A, Expr<A>)]) -> ISeq {
+        i_interleave(
+            i_concat(vec![ISeq::Str(String::from(";")), ISeq::Newline]),
+            defns.iter().map(Self::pprint_defn),
+        )
+    }
 
-/// a simple program in core lang.
-/// ```
-/// main = double 21 ;
-/// double x = x + x
-/// ```
-pub const SIMPLE_PROGRAM: &'static str = "main = double 21; double x = x + x";
+    fn pprint_defn(defn: &(A, Expr<A>)) -> ISeq {
+        let (name, expr) = defn;
+        i_concat(vec![
+            ISeq::Str(name.to_string()),
+            ISeq::Str(String::from(" = ")),
+            ISeq::Indent(Box::new(expr.pprint())),
+            ISeq::Newline,
+        ])
+    }
 
-pub const PRELUDE_DEFS: &'static str = "I x = x; K x y = x; K1 x y = y; S f g x = f x (g x); compose f g x = f (g x); twice f = compose f f";
+    fn pprint_alts(alts: &[Alter<A>]) -> ISeq {
+        i_interleave(ISeq::Newline, alts.iter().map(Self::pprint_alt))
+    }
 
-type Token = (u32, String);
+    fn pprint_alt(alts: &Alter<A>) -> ISeq {
+        let (tag, params, expr) = alts;
+        i_concat(vec![
+            ISeq::Str(format!(
+                "<{}>{}",
+                tag,
+                if params.is_empty() { "" } else { " " }
+            )),
+            i_interleave(
+                ISeq::Str(String::from(" ")),
+                params.iter().map(|p| ISeq::Str(p.to_string())),
+            ),
+            ISeq::Str(String::from(" -> ")),
+            expr.pprint(),
+        ])
+    }
+}
+
+/// a simple program in heap lang.
+pub const SIMPLE_PROGRAM: &'static str = r#"
+    main = double 21;
+    double x = x + x
+"#;
+
+pub const PRELUDE_DEFS: &'static str = r#"
+    I x = x;
+    K x y = x;
+    K1 x y = y;
+    S f g x = f x (g x);
+    compose f g x = f (g x);
+    twice f = compose f f
+"#;
+
+impl<A: std::fmt::Display> std::fmt::Display for Expr<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.pprint())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ISeq {
+    Nil,
+    Str(String),
+    Append(Box<ISeq>, Box<ISeq>),
+    Indent(Box<ISeq>),
+    Newline,
+}
+
+pub fn i_concat<F: IntoIterator<Item = ISeq>>(it: F) -> ISeq {
+    it.into_iter()
+        .fold(ISeq::Nil, |a, b| ISeq::Append(Box::new(a), Box::new(b)))
+}
+
+pub fn i_interleave<F: IntoIterator<Item = ISeq>>(s: ISeq, ss: F) -> ISeq {
+    ss.into_iter().fold(ISeq::Nil, |a, b| match (a, b) {
+        (ISeq::Nil, b) => b,
+        (a, ISeq::Nil) => a,
+        (a, b) => ISeq::Append(
+            Box::new(ISeq::Append(Box::new(a), Box::new(s.clone()))),
+            Box::new(b),
+        ),
+    })
+}
+
+pub fn pprint_prog<A: std::fmt::Display>(p: Program<A>) -> ISeq {
+    i_interleave(
+        i_concat(vec![ISeq::Str(String::from(";")), ISeq::Newline]),
+        p.into_iter().map(pprint_scdefn),
+    )
+}
+
+pub fn pprint_scdefn<A: std::fmt::Display>(sc: ScDefn<A>) -> ISeq {
+    let (name, params, expr) = sc;
+    i_concat(vec![
+        ISeq::Str(format!("{} ", name)),
+        i_interleave(
+            ISeq::Str(String::from(" ")),
+            params.iter().map(|p| ISeq::Str(p.to_string())),
+        ),
+        ISeq::Str(String::from(" = ")),
+        ISeq::Indent(Box::new(ISeq::Newline)),
+        expr.pprint(),
+    ])
+}
+
+impl std::fmt::Display for ISeq {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", i_flatten(0, vec![(self, 0)]))
+    }
+}
+
+fn i_flatten(curr_col: u32, isep_reps: Vec<(&ISeq, u32)>) -> String {
+    match isep_reps.split_first() {
+        None => String::from(""),
+        Some(((ISeq::Nil, _), seqs)) => i_flatten(curr_col, seqs.to_vec()),
+        Some(((ISeq::Newline, indent), seqs)) => {
+            let mut res = String::from(" ").repeat(*indent as usize);
+            res.insert(0, '\n');
+            res.push_str(&i_flatten(*indent, seqs.to_vec()));
+            res
+        }
+        Some(((ISeq::Indent(seq), _), seqs)) => {
+            let mut res = seqs.to_vec();
+            res.insert(0, (seq, curr_col));
+            i_flatten(curr_col, res)
+        }
+        Some(((ISeq::Str(s), _), seqs)) => format!(
+            "{}{}",
+            s,
+            i_flatten(curr_col + s.len() as u32, seqs.to_vec())
+        ),
+        Some(((ISeq::Append(a, b), indent), seqs)) => {
+            let mut res = seqs.to_vec();
+            res.insert(0, (b, *indent));
+            res.insert(0, (a, *indent));
+            i_flatten(curr_col, res)
+        }
+    }
+}
+
+type Token = ((u32, u32), String);
 
 pub(crate) fn clex(input: String) -> Vec<Token> {
-    let mut tokens: Vec<Token> = Vec::new();
-    let mut chars = input.chars();
-    let mut c = chars.next();
-    let mut line = 0;
-    let mut temp;
-    while let Some(c_) = c {
-        match c_ {
-            '|' => {
-                let c_next = chars.next();
-                match c_next {
-                    Some('|') => {
-                        while chars.next() != Some('\n') {}
-                        line += 1;
-                    }
-                    _ => tokens.push((line, String::from('|'))),
-                }
-            }
-            c__ if TWO_CHAR_OPS.iter().find(|&&s| s.starts_with(c__)).is_some() => {
-                let c_next = chars.next();
-                match (c__, c_next) {
-                    ('=', Some('=')) => tokens.push((line, String::from("=="))),
-                    ('~', Some('=')) => tokens.push((line, String::from("~="))),
-                    ('>', Some('=')) => tokens.push((line, String::from(">="))),
-                    ('<', Some('=')) => tokens.push((line, String::from("<="))),
-                    ('-', Some('>')) => tokens.push((line, String::from("->"))),
-                    _ => {
-                        tokens.push((line, String::from(c__)));
-                        temp = chars.collect::<String>();
-                        if let Some(c_next) = c_next {
-                            temp.insert(0, c_next);
-                        }
-                        chars = temp.chars();
-                    }
-                }
-            }
-            c__ if c__.is_whitespace() && c__ == '\n' => {
-                line += 1;
-            }
-            c__ if c__.is_digit(10) => {
-                let mut rest = chars
-                    .clone()
-                    .take_while(|c| c.is_digit(10))
-                    .collect::<String>();
-                rest.insert(0, c__);
-                tokens.push((line, rest));
-                temp = chars.skip_while(|c| c.is_digit(10)).collect::<String>();
-                chars = temp.chars();
-            }
-            c__ if c__.is_alphabetic() => {
-                let mut rest = chars
-                    .clone()
-                    .take_while(|c| c.is_alphanumeric() || *c == '_')
-                    .collect::<String>();
-                rest.insert(0, c__);
-                tokens.push((line, rest));
-                temp = chars
-                    .skip_while(|c| c.is_alphanumeric() || *c == '_')
-                    .collect::<String>();
-                chars = temp.chars();
-            }
-            c__ => tokens.push((line, String::from(c__))),
-        }
-        c = chars.next();
-    }
-    tokens
+    todo!()
+    // let mut tokens: Vec<((u32, u32), String)> = Vec::new();
+    // let mut chars = input.grapheme_indices(true).peekable();
+    // let mut line = 0;
+    // let mut last_idx = 0;
+    // while let Some((i, c)) = chars.peek() {
+    //     match *c {
+    //         "|" => {
+    //             let _ = chars.next();
+    //             let c_next = chars.next();
+    //             match c_next {
+    //                 Some((_, "|")) => {
+    //                     while let Some((k, s)) = chars.next()
+    //                         && s.contains('\n')
+    //                     {
+    //                         last_idx = k;
+    //                         line += 1;
+    //                     }
+    //                 }
+    //                 Some((j, _)) => tokens.push(((line, j as u32), String::from("|"))),
+    //                 None => break,
+    //             }
+    //         }
+    //         c__ if TWO_CHAR_OPS.iter().find(|&&s| s.starts_with(c__)).is_some() => {
+    //             match (c__, chars.peek()) {
+    //                 ("=", Some((_, "="))) => {
+    //                     tokens.push(((line, *i as u32), String::from("==")));
+    //                     chars.next();
+    //                 }
+    //                 ("~", Some((_, "="))) => {
+    //                     tokens.push(((line, *i as u32), String::from("~=")));
+    //                     chars.next();
+    //                 }
+    //                 (">", Some((_, "="))) => {
+    //                     tokens.push(((line, *i as u32), String::from(">=")));
+    //                     chars.next();
+    //                 }
+    //                 ("<", Some((_, "="))) => {
+    //                     tokens.push(((line, *i as u32), String::from("<=")));
+    //                     chars.next();
+    //                 }
+    //                 ("-", Some((_, ">"))) => tokens.push(((line, *i as u32), String::from("->"))),
+    //                 (_, None) => tokens.push(((line, *i as u32), String::from(c__))),
+    //                 (_, Some((_, _))) => {
+    //                     tokens.push(((line, *i as u32), String::from(c__)));
+    //                     let _ = chars.next_back();
+    //                 }
+    //             }
+    //         }
+    //         c__ if c__ == "\n" => {
+    //             line += 1;
+    //         }
+    //         c__ if c__.chars().all(|c| c.is_digit(10)) => {
+    //             let mut rest = chars
+    //                 .clone()
+    //                 .take_while(|c| c.1.chars().all(|c| c.is_digit(10)))
+    //                 .map(|c| c.1)
+    //                 .collect::<String>();
+    //             rest.insert(0, c__);
+    //             tokens.push(((line, *i as u32), rest));
+    //             while let Some(c_) = chars.next()
+    //                 && c_.is_digit(10)
+    //             {}
+    //             let _ = chars.next_back();
+    //         }
+    //         c__ if c__.is_alphabetic() => {
+    //             let mut rest = chars
+    //                 .clone()
+    //                 .take_while(|c| c.is_alphanumeric() || *c == '_')
+    //                 .collect::<String>();
+    //             rest.insert(0, c__);
+    //             tokens.push((line, rest));
+    //             while let Some(c_) = chars.next()
+    //                 && (c_.is_alphanumeric() || c_ == '_')
+    //             {}
+    //             let _ = chars.next_back();
+    //         }
+    //         c__ => tokens.push((line, String::from(c__))),
+    //     }
+    // }
+    // tokens
 }
 
 const TWO_CHAR_OPS: [&'static str; 5] = ["==", "~=", ">=", "<=", "->"];
@@ -163,13 +375,6 @@ pub fn parse_raw(s: String) -> Result<Vec<CoreProgram>, SyntaxError> {
     syntax(tokens)
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("syntax error: {0:?}")]
 pub struct SyntaxError(pub Token);
-
-impl std::fmt::Display for SyntaxError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Syntax error")
-    }
-}
-
-impl std::error::Error for SyntaxError {}

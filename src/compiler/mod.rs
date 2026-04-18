@@ -1,5 +1,5 @@
 use crate::compiler::primitives::Primitive;
-use crate::core::{map_accuml, Addr, Heap, HeapError, ASSOC};
+use crate::heap::{ASSOC, Addr, Heap, HeapError, map_accuml};
 use crate::lang;
 use crate::lang::SyntaxError;
 use std::cmp::max;
@@ -51,53 +51,33 @@ pub(crate) struct TiStats {
     pub(crate) heap_alloc_count: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CompileError {
+    #[error("No main function")]
     NoMain,
+    #[error("Syntax error: {0}")]
     Syntax(SyntaxError),
 }
 
-impl std::fmt::Display for CompileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            CompileError::NoMain => write!(f, "No main function"),
-            CompileError::Syntax(s) => write!(f, "{}", s),
-        }
-    }
-}
-
-impl std::error::Error for CompileError {}
-
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum EvalError {
+    #[error("Empty stack")]
     EmptyStack,
+    #[error("Heap error: {0}")]
     Heap(HeapError),
+    #[error("Empty dump")]
     EmptyDump,
+    #[error("tried to apply a number to something")]
     NumAp,
+    #[error("expected {expected} arguments, got {actual}")]
     ArgsLengthMismatch { expected: usize, actual: usize },
+    #[error("type mismatch")]
     TypeMismatch,
+    #[error("tried to apply a data to something")]
     DataAp,
+    #[error("aborting")]
     AbortSig,
 }
-
-impl std::fmt::Display for EvalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            EvalError::EmptyStack => write!(f, "Empty stack"),
-            EvalError::Heap(h) => write!(f, "{}", h),
-            EvalError::EmptyDump => write!(f, "Empty dump"),
-            EvalError::NumAp => write!(f, "tried to apply a number to something"),
-            EvalError::ArgsLengthMismatch { expected, actual } => {
-                write!(f, "expected {} arguments, got {}", expected, actual)
-            }
-            EvalError::TypeMismatch => write!(f, "type mismatch"),
-            EvalError::DataAp => write!(f, "tried to apply a data to something"),
-            EvalError::AbortSig => write!(f, "aborting"),
-        }
-    }
-}
-
-impl std::error::Error for EvalError {}
 
 pub(crate) fn compile(p: lang::CoreProgram) -> Result<TiState, CompileError> {
     let sc_defs = vec![
@@ -542,25 +522,16 @@ pub(crate) fn get_stack_results(state: &TiState) -> Result<Vec<Node>, ResultErro
         .collect::<Result<Vec<_>, ResultError>>()?)
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ResultError {
+    #[error("no state")]
     NoState,
+    #[error("heap error: {0}")]
     Heap(HeapError),
+    #[error("syntax error: {0}")]
     Syntax(SyntaxError),
+    #[error("compile error: {0}")]
     Compile(CompileError),
+    #[error("eval error: {0}")]
     Eval(EvalError),
 }
-
-impl std::fmt::Display for ResultError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            ResultError::NoState => write!(f, "no state"),
-            ResultError::Heap(h) => write!(f, "{}", h),
-            ResultError::Syntax(s) => write!(f, "{}", s),
-            ResultError::Compile(c) => write!(f, "{}", c),
-            ResultError::Eval(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for ResultError {}

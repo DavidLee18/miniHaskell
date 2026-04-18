@@ -1,19 +1,42 @@
 use crate::compiler::primitives::Primitive;
 use crate::compiler::{Node, ResultError, TiStats};
-use crate::core::{Addr, Heap, HeapError, ASSOC};
-use crate::lang::{CoreExpr, Expr, Name, SyntaxError};
-use signal_hook::consts::{SIGINT, SIGTERM};
+use crate::heap::{ASSOC, Addr, Heap, HeapError};
+use crate::lang::{Expr, Name, SyntaxError};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use termion::color;
 
 pub mod compiler;
-pub mod core;
+pub mod heap;
 pub mod lang;
 #[cfg(test)]
 mod test;
+
+fn main() {
+    let ex: lang::CoreProgram = vec![
+        (
+            String::from("id"),
+            vec![],
+            Expr::Ap(
+                Box::new(Expr::Ap(
+                    Box::new(Expr::Var(String::from("S"))),
+                    Box::new(Expr::Var(String::from("K"))),
+                )),
+                Box::new(Expr::Var(String::from("K"))),
+            ),
+        ),
+        (
+            String::from("main"),
+            vec![],
+            Expr::Ap(
+                Box::new(Expr::Var(String::from("id"))),
+                Box::new(Expr::Num(3)),
+            ),
+        ),
+    ];
+    println!("Hello Expr!");
+    println!("{}", lang::pprint_prog(ex));
+}
 
 fn run_file(
     p: PathBuf,
@@ -48,13 +71,10 @@ fn run(s: String) -> Result<Vec<Result<(Vec<i64>, Vec<Node>, TiStats), ResultErr
         .collect::<Vec<_>>())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let term = Arc::new(AtomicBool::new(false));
+fn repl() -> Result<(), Box<dyn std::error::Error>> {
     let logo = text_to_ascii_art::to_art(String::from("miniHaskell"), "", 0, 0, 0)?;
     println!("{}", logo);
     println!("type :quit to quit");
-    signal_hook::flag::register(SIGINT, Arc::clone(&term))?;
-    signal_hook::flag::register(SIGTERM, Arc::clone(&term))?;
     let mut temp_programs = lang::parse_raw(String::from(lang::PRELUDE_DEFS))?;
     let mut sc_defs = vec![];
     let mut temp_program = temp_programs.remove(0);
@@ -208,8 +228,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     n,
                                                     color::Fg(color::Reset)
                                                 );
-                                                if let Expr::Let { defs, .. } = &res {
-                                                    for (n, _) in defs {
+                                                if let Expr::Let { defns, .. } = &res {
+                                                    for (n, _) in defns {
                                                         for i in 0..state.4.len() {
                                                             if state.4[i].0 == *n {
                                                                 state.4.remove(i);
@@ -261,10 +281,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         Err(SyntaxError(t)) => {
                             eprintln!(
-                                "{}syntax error: {:?} in line {}{}",
+                                "{}syntax error: {:?} in line {}, col{}{}",
                                 color::Fg(color::Red),
                                 t.1,
-                                t.0 + 1,
+                                t.0.0 + 1,
+                                t.0.1 + 1,
                                 color::Fg(color::Reset)
                             );
                             continue;
@@ -307,8 +328,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 n,
                                                 color::Fg(color::Reset)
                                             );
-                                            if let Expr::Let { defs, .. } = &sc_def.2 {
-                                                for (n, _) in defs {
+                                            if let Expr::Let { defns, .. } = &sc_def.2 {
+                                                for (n, _) in defns {
                                                     for i in 0..state.4.len() {
                                                         if state.4[i].0 == *n {
                                                             state.4.remove(i);
@@ -431,23 +452,27 @@ fn allocate_expr_using_prev_it(
     heap: &mut Heap<Node>,
     env: &mut ASSOC<Name, Addr>,
     prev_it_addr: Addr,
-    expr: CoreExpr,
+    expr: lang::CoreExpr,
 ) -> Result<Addr, HeapError> {
     match expr {
-        CoreExpr::Var(v) if v == "it" => Ok(heap.alloc(Node::Ind(prev_it_addr))),
-        CoreExpr::Var(v) => Err(HeapError::UndefinedName(v)),
-        CoreExpr::Num(n) => Ok(heap.alloc(Node::Num(n))),
-        CoreExpr::Constr { tag, arity } => Ok(heap.alloc(Node::Prim(
+        Expr::Var(v) if v == "it" => Ok(heap.alloc(Node::Ind(prev_it_addr))),
+        Expr::Var(v) => Err(HeapError::UndefinedName(v)),
+        Expr::Num(n) => Ok(heap.alloc(Node::Num(n))),
+        Expr::Constr { tag, arity } => Ok(heap.alloc(Node::Prim(
             String::from("Pack"),
             Primitive::Constr(tag, arity),
         ))),
-        CoreExpr::Ap(e1, e2) => {
+        Expr::Ap(e1, e2) => {
             let a1 = allocate_expr_using_prev_it(heap, env, prev_it_addr, *e1)?;
             let a2 = allocate_expr_using_prev_it(heap, env, prev_it_addr, *e2)?;
             Ok(heap.alloc(Node::Ap(a1, a2)))
         }
-        CoreExpr::Let { defs, body } => {
-            for (n, mut e) in defs {
+        Expr::Let {
+            is_rec,
+            defns,
+            body,
+        } => {
+            for (n, mut e) in defns {
                 match (n.as_str(), e.get_var_mut("it")) {
                     ("it", _) => panic!("conflicting 'it'"),
                     (_, None) => {
@@ -462,8 +487,8 @@ fn allocate_expr_using_prev_it(
             }
             allocate_expr_using_prev_it(heap, env, prev_it_addr, *body)
         }
-        CoreExpr::Case(_, _) => Err(HeapError::NotInstantiable),
-        CoreExpr::Lam(_, _) => Err(HeapError::NotInstantiable),
+        Expr::Case(_, _) => Err(HeapError::NotInstantiable),
+        Expr::Lam(_, _) => Err(HeapError::NotInstantiable),
     }
 }
 

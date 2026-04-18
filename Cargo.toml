@@ -1,11 +1,12 @@
 [package]
 name = "mini_haskell"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-signal-hook = "0.3.17"
 termion = "4.0.3"
 text-to-ascii-art = "0.1.10"
+thiserror = "2.0.18"
+unicode-segmentation = "1.13.2"
 
 [dev-dependencies]
