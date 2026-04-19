@@ -13,27 +13,41 @@ pub mod lang;
 mod test;
 
 fn main() {
-    let ex: lang::CoreProgram = vec![
-        (
-            String::from("id"),
-            vec![],
-            Expr::Ap(
+    let ex: lang::CoreProgram = vec![(
+        String::from("main"),
+        vec![],
+        Expr::Ap(
+            Box::new(Expr::Ap(
+                Box::new(Expr::Var(String::from(">"))),
                 Box::new(Expr::Ap(
-                    Box::new(Expr::Var(String::from("S"))),
-                    Box::new(Expr::Var(String::from("K"))),
+                    Box::new(Expr::Ap(
+                        Box::new(Expr::Var(String::from("*"))),
+                        Box::new(Expr::Var(String::from("x"))),
+                    )),
+                    Box::new(Expr::Ap(
+                        Box::new(Expr::Ap(
+                            Box::new(Expr::Var(String::from("+"))),
+                            Box::new(Expr::Var(String::from("y"))),
+                        )),
+                        Box::new(Expr::Var(String::from("z"))),
+                    )),
                 )),
-                Box::new(Expr::Var(String::from("K"))),
-            ),
+            )),
+            Box::new(Expr::Ap(
+                Box::new(Expr::Ap(
+                    Box::new(Expr::Var(String::from("*"))),
+                    Box::new(Expr::Var(String::from("p"))),
+                )),
+                Box::new(Expr::Ap(
+                    Box::new(Expr::Ap(
+                        Box::new(Expr::Var(String::from("-"))),
+                        Box::new(Expr::Var(String::from("xs"))),
+                    )),
+                    Box::new(Expr::Var(String::from("ys"))),
+                )),
+            )),
         ),
-        (
-            String::from("main"),
-            vec![],
-            Expr::Ap(
-                Box::new(Expr::Var(String::from("id"))),
-                Box::new(Expr::Num(3)),
-            ),
-        ),
-    ];
+    )];
     println!("Hello Expr!");
     println!("{}", lang::pprint_prog(ex));
 }

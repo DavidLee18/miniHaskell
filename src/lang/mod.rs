@@ -34,6 +34,12 @@ pub type CoreAlt = Alter<Name>;
 pub(crate) type CoreProgram = Program<Name>;
 pub(crate) type CoreScDefn = ScDefn<Name>;
 
+pub enum Associativity {
+    Left,
+    Right,
+    None,
+}
+
 impl<A> Expr<A> {
     pub fn is_atomic(&self) -> bool {
         match self {
@@ -59,6 +65,22 @@ impl<A> Expr<A> {
             _ => None,
         }
     }
+
+    fn get_precedence(&self) -> u32 {
+        match self {
+            Expr::Var(n) => match n.as_str() {
+                "|" => 1,
+                "&" => 2,
+                "==" | "~=" | ">" | ">=" | "<" | "<=" => 3,
+                "+" | "-" => 4,
+                "*" | "/" => 5,
+                _ => 6,
+            },
+            Expr::Num(_) | Expr::Constr { .. } => 7,
+            Expr::Ap(a, _) => a.get_precedence(),
+            Expr::Let { .. } | Expr::Case(_, _) | Expr::Lam(_, _) => 0,
+        }
+    }
 }
 
 impl<A: std::fmt::Display> Expr<A> {
@@ -66,13 +88,89 @@ impl<A: std::fmt::Display> Expr<A> {
         match self {
             Expr::Num(n) => ISeq::Str(n.to_string()),
             Expr::Var(v) => ISeq::Str(v.clone()),
-            Expr::Ap(a, b) => ISeq::Append(
-                Box::new(ISeq::Append(
-                    Box::new(a.pprint()),
-                    Box::new(ISeq::Str(String::from(" "))),
-                )),
-                Box::new(b.pprint_a()),
-            ),
+            Expr::Ap(a, b) => match &**a {
+                Expr::Ap(c, d) => match &**c {
+                    Expr::Var(n)
+                        if !n.chars().any(char::is_alphanumeric)
+                            && c.get_precedence() > b.get_precedence()
+                            && c.get_precedence() > d.get_precedence() =>
+                    {
+                        i_concat(vec![
+                            ISeq::Str(String::from("(")),
+                            d.pprint(),
+                            ISeq::Str(format!(") {} (", n)),
+                            b.pprint(),
+                            ISeq::Str(String::from(")")),
+                        ])
+                    }
+                    Expr::Var(n)
+                        if !n.chars().any(char::is_alphanumeric)
+                            && c.get_precedence() > b.get_precedence() =>
+                    {
+                        i_concat(vec![
+                            d.pprint(),
+                            ISeq::Str(format!(" {} (", n)),
+                            b.pprint(),
+                            ISeq::Str(String::from(")")),
+                        ])
+                    }
+                    Expr::Var(n)
+                        if !n.chars().any(char::is_alphanumeric)
+                            && c.get_precedence() > d.get_precedence() =>
+                    {
+                        i_concat(vec![
+                            ISeq::Str(String::from("(")),
+                            d.pprint(),
+                            ISeq::Str(format!(") {} ", n)),
+                            b.pprint(),
+                        ])
+                    }
+                    Expr::Var(n) if !n.chars().any(char::is_alphanumeric) => {
+                        i_concat(vec![d.pprint(), ISeq::Str(format!(" {} ", n)), b.pprint()])
+                    }
+                    _ if c.get_precedence() > b.get_precedence()
+                        && c.get_precedence() > d.get_precedence() =>
+                    {
+                        i_concat(vec![
+                            c.pprint(),
+                            ISeq::Str(String::from(" (")),
+                            d.pprint(),
+                            ISeq::Str(String::from(") (")),
+                            b.pprint(),
+                            ISeq::Str(String::from(")")),
+                        ])
+                    }
+                    _ if c.get_precedence() > b.get_precedence() => i_concat(vec![
+                        c.pprint(),
+                        ISeq::Str(String::from(" ")),
+                        d.pprint(),
+                        ISeq::Str(String::from(" (")),
+                        b.pprint(),
+                        ISeq::Str(String::from(")")),
+                    ]),
+                    _ if c.get_precedence() > d.get_precedence() => i_concat(vec![
+                        c.pprint(),
+                        ISeq::Str(String::from(" (")),
+                        d.pprint(),
+                        ISeq::Str(String::from(") ")),
+                        b.pprint(),
+                    ]),
+                    _ => i_concat(vec![
+                        c.pprint(),
+                        ISeq::Str(String::from(" ")),
+                        d.pprint(),
+                        ISeq::Str(String::from(" ")),
+                        b.pprint(),
+                    ]),
+                },
+                _ if a.get_precedence() > b.get_precedence() => i_concat(vec![
+                    a.pprint(),
+                    ISeq::Str(String::from(" (")),
+                    b.pprint(),
+                    ISeq::Str(String::from(")")),
+                ]),
+                _ => i_concat(vec![a.pprint(), ISeq::Str(String::from(" ")), b.pprint()]),
+            },
             Expr::Let {
                 is_rec,
                 defns,
@@ -104,17 +202,6 @@ impl<A: std::fmt::Display> Expr<A> {
                 expr.pprint(),
             ]),
             Expr::Constr { tag, arity } => ISeq::Str(format!("Pack{{{}, {}}}", tag, arity)),
-        }
-    }
-
-    fn pprint_a(&self) -> ISeq {
-        match self {
-            Expr::Num(_) | Expr::Var(_) => self.pprint(),
-            _ => i_concat(vec![
-                ISeq::Str(String::from("(")),
-                self.pprint(),
-                ISeq::Str(String::from(")")),
-            ]),
         }
     }
 
